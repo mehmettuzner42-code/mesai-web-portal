@@ -934,6 +934,26 @@ def download_apk():
     return redirect(url_for("dashboard"))
 
 
+@app.get("/apk-auto-login")
+def apk_auto_login():
+    token = request.args.get("token", "").strip()
+    if not token:
+        return redirect(url_for("login"))
+    try:
+        data = token_serializer.loads(token, max_age=60 * 60 * 24 * 30)
+        uid = data.get("uid")
+    except Exception:
+        return redirect(url_for("login"))
+    user = User.query.get(uid) if uid else None
+    if not user:
+        session.clear()
+        return redirect(url_for("login"))
+    session["user_id"] = user.id
+    # web oturumu için yeni token üret (nonce taze kalsın)
+    session["api_token"] = token_serializer.dumps({"uid": user.id, "nonce": secrets.token_hex(8)})
+    return redirect(url_for("dashboard"))
+
+
 def bearer_user():
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
