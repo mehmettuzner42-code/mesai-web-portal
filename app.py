@@ -1018,6 +1018,35 @@ def api_register():
     return jsonify({"token": token, "user": {"id": user.id, "username": user.username}}), 201
 
 
+@app.get("/api/profile")
+@api_auth_required
+def api_profile_get():
+    user = request.api_user
+    p = get_or_create_profile(user.id)
+    return jsonify({
+        "daireBaskanligi": p.daire_baskanligi or "",
+        "subeMudurlugu": p.sube_mudurlugu or "",
+        "adSoyad": p.ad_soyad or "",
+        "sicilNo": p.sicil_no or "",
+        "ekipKodu": p.ekip_kodu or "",
+    })
+
+
+@app.put("/api/profile")
+@api_auth_required
+def api_profile_put():
+    user = request.api_user
+    p = get_or_create_profile(user.id)
+    data = request.get_json(silent=True) or {}
+    p.daire_baskanligi = str(data.get("daireBaskanligi", p.daire_baskanligi or "")).strip()
+    p.sube_mudurlugu = str(data.get("subeMudurlugu", p.sube_mudurlugu or "")).strip()
+    p.ad_soyad = str(data.get("adSoyad", p.ad_soyad or "")).strip()
+    p.sicil_no = str(data.get("sicilNo", p.sicil_no or "")).strip()
+    p.ekip_kodu = str(data.get("ekipKodu", p.ekip_kodu or "")).strip()
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 @app.get("/api/entries")
 @api_auth_required
 def api_entries():
