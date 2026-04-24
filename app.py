@@ -420,7 +420,7 @@ def register():
         if is_rate_limited(f"register:{ip}", limit=10, window_sec=60):
             flash("Çok fazla deneme. Lütfen 1 dakika sonra tekrar deneyin.", "error")
             return render_template("register.html")
-        email = request.form.get("email", "").strip().lower()
+        email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
         confirm = request.form.get("confirm_password", "")
         if "@" not in email:
@@ -452,7 +452,7 @@ def login():
         if is_rate_limited(f"login:{ip}", limit=15, window_sec=60):
             flash("Çok fazla deneme. Lütfen 1 dakika sonra tekrar deneyin.", "error")
             return render_template("login.html")
-        identity = request.form.get("email", request.form.get("username_or_email", "")).strip().lower()
+        identity = request.form.get("email", request.form.get("username_or_email", "")).strip()
         password = request.form.get("password", "")
         user = User.query.filter((User.username == identity) | (User.email == identity)).first()
         if not user or not check_password_hash(user.password_hash, password):
@@ -553,7 +553,7 @@ def forgot_password():
         if is_rate_limited(f"forgot:{ip}", limit=8, window_sec=60):
             flash("Çok fazla deneme. Lütfen 1 dakika sonra tekrar deneyin.", "error")
             return render_template("forgot_password.html", reset_url=None, sent_via_smtp=False)
-        email = request.form.get("email", "").strip().lower()
+        email = request.form.get("email", "").strip()
         user = User.query.filter_by(email=email).first()
         if user:
             token = token_serializer.dumps({"uid": user.id}, salt="reset-password")
@@ -1053,7 +1053,7 @@ def api_login():
     if is_rate_limited(f"api_login:{ip}", limit=20, window_sec=60):
         return jsonify({"error": "rate_limited"}), 429
     data = request.get_json(silent=True) or {}
-    identity = str(data.get("email", data.get("usernameOrEmail", ""))).strip().lower()
+    identity = str(data.get("email", data.get("usernameOrEmail", ""))).strip()
     password = str(data.get("password", ""))
     user = User.query.filter((User.username == identity) | (User.email == identity)).first()
     if not user or not check_password_hash(user.password_hash, password):
@@ -1068,7 +1068,7 @@ def api_register():
     if is_rate_limited(f"api_register:{ip}", limit=10, window_sec=60):
         return jsonify({"error": "rate_limited"}), 429
     data = request.get_json(silent=True) or {}
-    email = str(data.get("email", "")).strip().lower()
+    email = str(data.get("email", "")).strip()
     password = str(data.get("password", ""))
     if "@" not in email:
         return jsonify({"error": "invalid_email"}), 400
@@ -1214,10 +1214,10 @@ def sync_usernames_with_emails() -> int:
     users = User.query.all()
     changed = 0
     for u in users:
-        email = (u.email or "").strip().lower()
+        email = (u.email or "").strip()
         if not email:
             continue
-        if (u.username or "").strip().lower() != email:
+        if (u.username or "").strip() != email:
             u.username = email
             changed += 1
     if changed:
