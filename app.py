@@ -973,6 +973,31 @@ def api_login():
     return jsonify({"token": token, "user": {"id": user.id, "username": user.username}})
 
 
+@app.post("/api/register")
+def api_register():
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
+    if is_rate_limited(f"api_register:{ip}", limit=10, window_sec=60):
+        return jsonify({"error": "rate_limited"}), 429
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username", "")).strip().lower()
+    email = str(data.get("email", "")).strip().lower()
+    password = str(data.get("password", ""))
+    if len(username) < 3:
+        return jsonify({"error": "invalid_username"}), 400
+    if "@" not in email:
+        return jsonify({"error": "invalid_email"}), 400
+    if len(password) < 6:
+        return jsonify({"error": "invalid_password"}), 400
+    if User.query.filter((User.username == username) | (User.email == email)).first():
+        return jsonify({"error": "already_exists"}), 409
+    user = User(username=username, email=email, password_hash=generate_password_hash(password))
+    db.session.add(user)
+    db.session.commit()
+    get_or_create_profile(user.id)
+    token = token_serializer.dumps({"uid": user.id, "nonce": secrets.token_hex(8)})
+    return jsonify({"token": token, "user": {"id": user.id, "username": user.username}}), 201
+
+
 @app.get("/api/entries")
 @api_auth_required
 def api_entries():
