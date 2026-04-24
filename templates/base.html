@@ -12,9 +12,10 @@
             <strong>Mesai Portal</strong>
             {% if session.get('user_id') %}
             <nav>
-                <a href="{{ url_for('dashboard') }}">Panel</a>
+                <a href="{{ url_for('dashboard') }}">Mesai Girişi</a>
                 <a href="{{ url_for('reports') }}">Raporlar</a>
                 <a href="{{ url_for('profile') }}">Profil</a>
+                <a href="{{ apk_url }}">APK Uygulama İndir</a>
                 <a href="{{ url_for('logout') }}">Çıkış</a>
             </nav>
             {% endif %}

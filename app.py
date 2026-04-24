@@ -386,7 +386,7 @@ def build_recent_ui_items(entries):
 
 @app.context_processor
 def inject_helpers():
-    return {"fmt_num": fmt_num}
+    return {"fmt_num": fmt_num, "apk_url": app.config.get("APK_URL", "/download-apk")}
 
 
 @app.after_request
