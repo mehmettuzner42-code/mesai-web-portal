@@ -1069,11 +1069,25 @@ def api_create_entry():
     user = request.api_user
     data = request.get_json(silent=True) or {}
     try:
+        work_date = parse_date(str(data.get("workDate", "")))
+        start_time = str(data.get("startTime", ""))
+        end_time = str(data.get("endTime", ""))
+
+        # APK/web tekrar aynı kaydı gönderirse mükerrer oluşturma
+        existing = OvertimeEntry.query.filter_by(
+            user_id=user.id,
+            work_date=work_date,
+            start_time=start_time,
+            end_time=end_time,
+        ).first()
+        if existing:
+            return jsonify(entry_to_dict(existing)), 200
+
         entry = OvertimeEntry(
             user_id=user.id,
-            work_date=parse_date(str(data.get("workDate", ""))),
-            start_time=str(data.get("startTime", "")),
-            end_time=str(data.get("endTime", "")),
+            work_date=work_date,
+            start_time=start_time,
+            end_time=end_time,
             pct60=float(data.get("pct60", 0)),
             pct15=float(data.get("pct15", 0)),
             pazar=float(data.get("pazar", 0)),
