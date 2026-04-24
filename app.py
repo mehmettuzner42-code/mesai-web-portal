@@ -305,6 +305,14 @@ def current_user():
     return User.query.get(uid)
 
 
+def ensure_user_or_redirect():
+    user = current_user()
+    if user is None:
+        session.clear()
+        return None
+    return user
+
+
 def get_or_create_profile(user_id: int):
     p = UserProfile.query.filter_by(user_id=user_id).first()
     if p:
@@ -468,7 +476,10 @@ def logout():
 @app.route("/profile", methods=["GET", "POST"])
 @login_required
 def profile():
-    user = current_user()
+    user = ensure_user_or_redirect()
+    if user is None:
+        flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
+        return redirect(url_for("login"))
     p = get_or_create_profile(user.id)
     if request.method == "POST":
         p.daire_baskanligi = request.form.get("daire_baskanligi", "").strip()
@@ -551,7 +562,10 @@ def api_day_defaults_web():
 @app.route("/dashboard", methods=["GET", "POST"])
 @login_required
 def dashboard():
-    user = current_user()
+    user = ensure_user_or_redirect()
+    if user is None:
+        flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
+        return redirect(url_for("login"))
     profile = get_or_create_profile(user.id)
     if request.method == "POST":
         try:
@@ -597,7 +611,10 @@ def dashboard():
 @app.route("/entries/<int:entry_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit_entry(entry_id: int):
-    user = current_user()
+    user = ensure_user_or_redirect()
+    if user is None:
+        flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
+        return redirect(url_for("login"))
     entry = OvertimeEntry.query.filter_by(id=entry_id, user_id=user.id).first_or_404()
     if request.method == "POST":
         try:
@@ -622,7 +639,10 @@ def edit_entry(entry_id: int):
 @app.post("/entries/<int:entry_id>/delete")
 @login_required
 def delete_entry(entry_id: int):
-    user = current_user()
+    user = ensure_user_or_redirect()
+    if user is None:
+        flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
+        return redirect(url_for("login"))
     entry = OvertimeEntry.query.filter_by(id=entry_id, user_id=user.id).first_or_404()
     db.session.delete(entry)
     db.session.commit()
@@ -634,7 +654,10 @@ def delete_entry(entry_id: int):
 @app.get("/reports")
 @login_required
 def reports():
-    user = current_user()
+    user = ensure_user_or_redirect()
+    if user is None:
+        flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
+        return redirect(url_for("login"))
     profile = get_or_create_profile(user.id)
     all_entries = OvertimeEntry.query.filter_by(user_id=user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
     start_options = sorted({(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) for e in all_entries}, reverse=True)
@@ -696,7 +719,10 @@ def reports():
 @app.post("/reports/import")
 @login_required
 def import_reports_backup():
-    user = current_user()
+    user = ensure_user_or_redirect()
+    if user is None:
+        flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
+        return redirect(url_for("login"))
     profile = get_or_create_profile(user.id)
     f = request.files.get("backup_file")
     if f is None or f.filename == "":
@@ -777,7 +803,10 @@ def report_period_rows_for_export(user_id: int, sy: int, sm: int):
 @app.get("/reports/export.csv")
 @login_required
 def export_reports_csv():
-    user = current_user()
+    user = ensure_user_or_redirect()
+    if user is None:
+        flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
+        return redirect(url_for("login"))
     year = request.args.get("year", type=int)
     period = request.args.get("period", "")
     if not year or "-" not in period:
@@ -810,7 +839,10 @@ def export_reports_csv():
 @app.get("/reports/export.xlsx")
 @login_required
 def export_reports_xlsx():
-    user = current_user()
+    user = ensure_user_or_redirect()
+    if user is None:
+        flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
+        return redirect(url_for("login"))
     profile = get_or_create_profile(user.id)
     year = request.args.get("year", type=int)
     period = request.args.get("period", "")
@@ -891,6 +923,10 @@ def export_reports_xlsx():
 @app.get("/download-apk")
 @login_required
 def download_apk():
+    user = ensure_user_or_redirect()
+    if user is None:
+        flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
+        return redirect(url_for("login"))
     apk_path = os.path.join(os.path.dirname(__file__), "..", "app", "build", "outputs", "apk", "debug", "app-debug.apk")
     if os.path.exists(apk_path):
         return send_file(apk_path, as_attachment=True, download_name="MesaiApp.apk")
