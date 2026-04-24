@@ -38,6 +38,59 @@ body {
     background: #1e40af;
 }
 
+.topbar nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.nav-dropbtn {
+    background: #1d4ed8;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.nav-dropbtn:hover {
+    background: #1e40af;
+}
+
+.nav-dropdown-content {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 190px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    z-index: 20;
+    padding: 6px;
+}
+
+.nav-dropdown-content a {
+    display: block;
+    margin: 0;
+    background: transparent;
+    border-radius: 6px;
+}
+
+.nav-dropdown-content a:hover {
+    background: #1e293b;
+}
+
+.nav-dropdown:hover .nav-dropdown-content {
+    display: block;
+}
+
 .card {
     background: #ffffff;
     border-radius: 10px;
@@ -214,7 +267,6 @@ code {
     }
 
     .topbar nav {
-        display: flex;
         flex-wrap: wrap;
         gap: 8px;
     }

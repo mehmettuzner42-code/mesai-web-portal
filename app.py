@@ -473,6 +473,47 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings_page():
+    user = ensure_user_or_redirect()
+    if user is None:
+        flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        action = request.form.get("action", "").strip()
+        try:
+            if action == "apk_refresh":
+                OvertimeEntry.query.filter_by(user_id=user.id).delete()
+                p = get_or_create_profile(user.id)
+                p.daire_baskanligi = ""
+                p.sube_mudurlugu = ""
+                p.ad_soyad = ""
+                p.sicil_no = ""
+                p.ekip_kodu = ""
+                db.session.commit()
+                flash("Web verileri temizlendi. APK'de giriş yapıp senkron yaptığınızda veriler yeniden yüklenecek.", "success")
+            elif action == "clear_all":
+                OvertimeEntry.query.filter_by(user_id=user.id).delete()
+                p = get_or_create_profile(user.id)
+                p.daire_baskanligi = ""
+                p.sube_mudurlugu = ""
+                p.ad_soyad = ""
+                p.sicil_no = ""
+                p.ekip_kodu = ""
+                db.session.commit()
+                flash("Web tarafındaki tüm veriler silindi.", "success")
+            else:
+                flash("Geçersiz işlem.", "error")
+        except Exception as exc:
+            db.session.rollback()
+            flash(f"Ayar işlemi başarısız: {exc}", "error")
+        return redirect(url_for("settings_page"))
+
+    return render_template("settings.html")
+
+
 @app.route("/profile", methods=["GET", "POST"])
 @login_required
 def profile():
@@ -626,8 +667,24 @@ def edit_entry(entry_id: int):
             entry.pazar = parse_float(request.form.get("pazar", "0"))
             entry.bayram = parse_float(request.form.get("bayram", "0"))
             entry.description = request.form.get("description", "").strip()
+
+            # Aynı kullanıcıda aynı tarih+saat mükerrer kayıtlar varsa tek kayda indir.
+            # Eski senkronlardan kalan kopyalar bu şekilde temizlenir.
+            duplicates = OvertimeEntry.query.filter(
+                OvertimeEntry.user_id == user.id,
+                OvertimeEntry.work_date == entry.work_date,
+                OvertimeEntry.start_time == entry.start_time,
+                OvertimeEntry.end_time == entry.end_time,
+                OvertimeEntry.id != entry.id,
+            ).all()
+            for d in duplicates:
+                db.session.delete(d)
+
             db.session.commit()
-            flash("Kayıt güncellendi.", "success")
+            if duplicates:
+                flash(f"Kayıt güncellendi. {len(duplicates)} mükerrer kayıt temizlendi.", "success")
+            else:
+                flash("Kayıt güncellendi.", "success")
             back = request.form.get("back", "dashboard")
             return redirect(url_for("reports") if back == "reports" else url_for("dashboard"))
         except Exception as exc:
