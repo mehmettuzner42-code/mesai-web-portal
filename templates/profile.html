@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h2>Profil Bilgileri</h2>
+</div>
+
+<div class="card">
+    <form method="post" class="grid two-col">
+        <label class="full">Daire Başkanlığı
+            <input name="daire_baskanligi" value="{{ profile.daire_baskanligi }}">
+        </label>
+        <label class="full">Şube Müdürlüğü
+            <input name="sube_mudurlugu" value="{{ profile.sube_mudurlugu }}">
+        </label>
+        <label>Ad Soyad
+            <input name="ad_soyad" value="{{ profile.ad_soyad }}">
+        </label>
+        <label>Sicil No
+            <input name="sicil_no" value="{{ profile.sicil_no }}">
+        </label>
+        <label>Ekip Kodu
+            <input name="ekip_kodu" value="{{ profile.ekip_kodu }}">
+        </label>
+        <button class="full" type="submit">Kaydet</button>
+    </form>
+</div>
+{% endblock %}

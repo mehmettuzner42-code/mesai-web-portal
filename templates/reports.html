@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h2>Raporlar</h2>
+</div>
+
+<div class="card">
+    <h3>Profil Bilgileri</h3>
+    <p><strong>Ad Soyad:</strong> {{ profile.ad_soyad or "-" }} | <strong>Sicil:</strong> {{ profile.sicil_no or "-" }} | <strong>Ekip:</strong> {{ profile.ekip_kodu or "-" }}</p>
+</div>
+
+<div class="card">
+    <form method="get" action="{{ url_for('reports') }}" class="grid two-col">
+        <label>Yıl Seç
+            <select name="year">
+                {% for y in years %}
+                <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Dönem Seç
+            <select name="period">
+                {% for sy, sm in period_options %}
+                    {% set em = 1 if sm == 12 else sm + 1 %}
+                    <option value="{{ sy }}-{{ '%02d'|format(sm) }}" {% if active_start[0] == sy and active_start[1] == sm %}selected{% endif %}>
+                        {{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][sm-1] }}/{{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][em-1] }}
+                    </option>
+                {% endfor %}
+            </select>
+        </label>
+        <button class="full" type="submit">Göster</button>
+    </form>
+    <p><strong>Dönem:</strong> {{ format_dmy(period_start) }} - {{ format_dmy(period_end) }}</p>
+    <div class="links">
+        <a class="button-link" href="{{ url_for('export_reports_xlsx', year=selected_year, period='%04d-%02d'|format(active_start[0], active_start[1])) }}">Excel Aktar</a>
+        <a class="button-link" href="{{ url_for('export_reports_csv', year=selected_year, period='%04d-%02d'|format(active_start[0], active_start[1])) }}">Dışa Aktar (CSV)</a>
+        <form method="post" action="{{ url_for('import_reports_backup') }}" enctype="multipart/form-data" class="import-form">
+            <input type="file" name="backup_file" accept=".json,application/json,text/json" required>
+            <button type="submit">İçe Aktar</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Dönem Kayıtları</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Tarih</th>
+                    <th>Gün</th>
+                    <th>Başlama</th>
+                    <th>Bitiş</th>
+                    <th>%60</th>
+                    <th>%15</th>
+                    <th>Pazar</th>
+                    <th>Bayram</th>
+                    <th>Açıklama</th>
+                    <th>Düzenle</th>
+                    <th>Sil</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ format_dmy(r.work_date) }}</td>
+                    <td>{{ weekday_tr(r.work_date) }}</td>
+                    <td>{{ r.start_time }}</td>
+                    <td>{{ r.end_time }}</td>
+                    <td>{{ fmt_num(r.pct60) }}</td>
+                    <td>{{ fmt_num(r.pct15) }}</td>
+                    <td>{{ fmt_num(r.pazar) }}</td>
+                    <td>{{ fmt_num(r.bayram) }}</td>
+                    <td>{{ r.description }}</td>
+                    <td><a class="button-link mini" href="{{ url_for('edit_entry', entry_id=r.entry_id, back='reports') }}">Düzenle</a></td>
+                    <td>
+                        <form method="post" action="{{ url_for('delete_entry', entry_id=r.entry_id) }}" onsubmit="return confirm('Bu veriyi silmek istediğinizden emin misiniz?');">
+                            <input type="hidden" name="back" value="reports">
+                            <button type="submit" class="danger">Sil</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="11">Bu dönemde kayıt yok.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Dönem Toplamları</h3>
+    <p>%60 Toplam: <strong>{{ fmt_num(period_total.pct60) }}</strong></p>
+    <p>%15 Toplam: <strong>{{ fmt_num(period_total.pct15) }}</strong></p>
+    <p>Pazar Toplam: <strong>{{ fmt_num(period_total.pazar) }}</strong></p>
+    <p>Bayram Toplam: <strong>{{ fmt_num(period_total.bayram) }}</strong></p>
+</div>
+
+<div class="card">
+    <h3>Yıl Toplamları</h3>
+    <p>%60 Toplam: <strong>{{ fmt_num(year_total.pct60) }}</strong></p>
+    <p>%15 Toplam: <strong>{{ fmt_num(year_total.pct15) }}</strong></p>
+    <p>Pazar Toplam: <strong>{{ fmt_num(year_total.pazar) }}</strong></p>
+    <p>Bayram Toplam: <strong>{{ fmt_num(year_total.bayram) }}</strong></p>
+</div>
+{% endblock %}

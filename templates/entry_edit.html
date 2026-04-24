@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h2>Kayıt Düzenle</h2>
+</div>
+
+<div class="card">
+    <form method="post" class="grid two-col entry-form" id="editForm">
+        <input type="hidden" name="back" value="{{ back }}">
+        <label>Tarih
+            <input type="date" id="work_date" name="work_date" value="{{ entry.work_date.isoformat() }}" required>
+        </label>
+        <label>Başlama
+            <input type="time" id="start_time" name="start_time" value="{{ entry.start_time }}" required>
+        </label>
+        <label>Bitiş
+            <input type="time" id="end_time" name="end_time" value="{{ entry.end_time }}" required>
+        </label>
+        <label>%60
+            <input id="pct60" name="pct60" value="{{ fmt_num(entry.pct60) }}">
+        </label>
+        <label>%15
+            <input id="pct15" name="pct15" value="{{ fmt_num(entry.pct15) }}">
+        </label>
+        <label>Pazar
+            <input id="pazar" name="pazar" value="{{ fmt_num(entry.pazar) }}">
+        </label>
+        <label>Bayram
+            <input id="bayram" name="bayram" value="{{ fmt_num(entry.bayram) }}">
+        </label>
+        <label class="full">Açıklama
+            <input name="description" value="{{ entry.description }}">
+        </label>
+        <button class="full" type="submit">Güncelle</button>
+    </form>
+</div>
+<script>
+function toMinutes(hhmm) {
+    if (!hhmm || !hhmm.includes(":")) return null;
+    const [h, m] = hhmm.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+}
+function minutesToHhmm(totalMin) {
+    let m = ((totalMin % 1440) + 1440) % 1440;
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+}
+function parseHours(text) {
+    if (text === null || text === undefined) return null;
+    const t = String(text).trim().replace(",", ".");
+    if (!t) return null;
+    const n = Number(t);
+    if (Number.isNaN(n)) return null;
+    return n;
+}
+function recalcFrom60() {
+    const d = document.getElementById("work_date").value;
+    const start = document.getElementById("start_time").value;
+    const h = parseHours(document.getElementById("pct60").value);
+    if (!d || !start || h === null || h <= 0) return;
+    const sMin = toMinutes(start);
+    if (sMin === null) return;
+    fetch(`/api/day-defaults?date=${encodeURIComponent(d)}`)
+        .then(r => r.json())
+        .then(v => {
+            if (v.isHoliday || v.weekday === 6) return;
+            const breakH = (v.weekday === 5) ? 1.0 : 0.0;
+            const endMin = sMin + Math.round((h + breakH) * 60);
+            const endHhmm = minutesToHhmm(endMin);
+            document.getElementById("end_time").value = endHhmm;
+            fetch(`/api/day-defaults?date=${encodeURIComponent(d)}&endTime=${encodeURIComponent(endHhmm)}`)
+                .then(r2 => r2.json())
+                .then(v2 => {
+                    document.getElementById("pct15").value = formatOut(v2.pct15);
+                    document.getElementById("pazar").value = formatOut(v2.pazar);
+                    document.getElementById("bayram").value = formatOut(v2.bayram);
+                })
+                .catch(() => {});
+        })
+        .catch(() => {});
+}
+function formatOut(v){
+    if (v === null || v === undefined) return "";
+    const n = Number(v);
+    if (Math.abs(n) < 1e-9) return "";
+    if (Number.isInteger(n)) return String(n);
+    return n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "").replace(".", ",");
+}
+document.getElementById("pct60").addEventListener("change", recalcFrom60);
+document.getElementById("pct60").addEventListener("input", recalcFrom60);
+</script>
+{% endblock %}
