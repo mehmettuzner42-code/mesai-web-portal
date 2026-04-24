@@ -1210,8 +1210,33 @@ def init_db():
     print("Database initialized.")
 
 
+def sync_usernames_with_emails() -> int:
+    users = User.query.all()
+    changed = 0
+    for u in users:
+        email = (u.email or "").strip().lower()
+        if not email:
+            continue
+        if (u.username or "").strip().lower() != email:
+            u.username = email
+            changed += 1
+    if changed:
+        db.session.commit()
+    return changed
+
+
+@app.cli.command("sync-usernames")
+def sync_usernames_cmd():
+    changed = sync_usernames_with_emails()
+    print(f"Synced users: {changed}")
+
+
 with app.app_context():
     db.create_all()
+    try:
+        sync_usernames_with_emails()
+    except Exception:
+        db.session.rollback()
 
 
 if __name__ == "__main__":
