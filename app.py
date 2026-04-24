@@ -420,13 +420,9 @@ def register():
         if is_rate_limited(f"register:{ip}", limit=10, window_sec=60):
             flash("Çok fazla deneme. Lütfen 1 dakika sonra tekrar deneyin.", "error")
             return render_template("register.html")
-        username = request.form.get("username", "").strip().lower()
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         confirm = request.form.get("confirm_password", "")
-        if len(username) < 3:
-            flash("Kullanıcı adı en az 3 karakter olmalı.", "error")
-            return render_template("register.html")
         if "@" not in email:
             flash("Geçerli bir e-posta girin.", "error")
             return render_template("register.html")
@@ -436,10 +432,11 @@ def register():
         if password != confirm:
             flash("Şifreler eşleşmiyor.", "error")
             return render_template("register.html")
-        if User.query.filter((User.username == username) | (User.email == email)).first():
-            flash("Bu kullanıcı adı veya e-posta zaten kayıtlı.", "error")
+        if User.query.filter((User.username == email) | (User.email == email)).first():
+            flash("Bu e-posta zaten kayıtlı.", "error")
             return render_template("register.html")
-        user = User(username=username, email=email, password_hash=generate_password_hash(password))
+        # Kullanıcı adı alanını e-posta ile eşit tutuyoruz.
+        user = User(username=email, email=email, password_hash=generate_password_hash(password))
         db.session.add(user)
         db.session.commit()
         get_or_create_profile(user.id)
@@ -455,11 +452,11 @@ def login():
         if is_rate_limited(f"login:{ip}", limit=15, window_sec=60):
             flash("Çok fazla deneme. Lütfen 1 dakika sonra tekrar deneyin.", "error")
             return render_template("login.html")
-        identity = request.form.get("username_or_email", "").strip().lower()
+        identity = request.form.get("email", request.form.get("username_or_email", "")).strip().lower()
         password = request.form.get("password", "")
         user = User.query.filter((User.username == identity) | (User.email == identity)).first()
         if not user or not check_password_hash(user.password_hash, password):
-            flash("Kullanıcı adı/e-posta veya şifre hatalı.", "error")
+            flash("E-posta veya şifre hatalı.", "error")
             return render_template("login.html")
         session["user_id"] = user.id
         session["api_token"] = token_serializer.dumps({"uid": user.id, "nonce": secrets.token_hex(8)})
@@ -511,7 +508,20 @@ def settings_page():
             flash(f"Ayar işlemi başarısız: {exc}", "error")
         return redirect(url_for("settings_page"))
 
-    return render_template("settings.html")
+    all_entries = OvertimeEntry.query.filter_by(user_id=user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
+    start_options = sorted({(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) for e in all_entries}, reverse=True)
+    if not start_options:
+        ps = period_start_for_date(date.today())
+        start_options = [(ps.year, ps.month)]
+    selected_year = period_year(start_options[0][0], start_options[0][1])
+    active_start = start_options[0]
+    period_value = f"{active_start[0]:04d}-{active_start[1]:02d}"
+
+    return render_template(
+        "settings.html",
+        selected_year=selected_year,
+        period_value=period_value,
+    )
 
 
 @app.route("/profile", methods=["GET", "POST"])
@@ -782,14 +792,16 @@ def import_reports_backup():
         return redirect(url_for("login"))
     profile = get_or_create_profile(user.id)
     f = request.files.get("backup_file")
+    back = request.form.get("back", "reports")
+    redirect_target = "settings_page" if back == "settings" else "reports"
     if f is None or f.filename == "":
         flash("İçe aktarma için dosya seçin.", "error")
-        return redirect(url_for("reports"))
+        return redirect(url_for(redirect_target))
     try:
         raw = f.read()
         if not raw:
             flash("Dosya boş.", "error")
-            return redirect(url_for("reports"))
+            return redirect(url_for(redirect_target))
         payload = json.loads(raw.decode("utf-8-sig", errors="strict"))
         if not isinstance(payload, dict):
             raise ValueError("Geçersiz JSON yapısı")
@@ -840,7 +852,7 @@ def import_reports_backup():
     except Exception as exc:
         db.session.rollback()
         flash(f"İçe aktarma başarısız: {exc}", "error")
-    return redirect(url_for("reports"))
+    return redirect(url_for(redirect_target))
 
 
 def report_period_rows_for_export(user_id: int, sy: int, sm: int):
@@ -1041,13 +1053,13 @@ def api_login():
     if is_rate_limited(f"api_login:{ip}", limit=20, window_sec=60):
         return jsonify({"error": "rate_limited"}), 429
     data = request.get_json(silent=True) or {}
-    identity = str(data.get("usernameOrEmail", "")).strip().lower()
+    identity = str(data.get("email", data.get("usernameOrEmail", ""))).strip().lower()
     password = str(data.get("password", ""))
     user = User.query.filter((User.username == identity) | (User.email == identity)).first()
     if not user or not check_password_hash(user.password_hash, password):
         return jsonify({"error": "invalid_credentials"}), 401
     token = token_serializer.dumps({"uid": user.id, "nonce": secrets.token_hex(8)})
-    return jsonify({"token": token, "user": {"id": user.id, "username": user.username}})
+    return jsonify({"token": token, "user": {"id": user.id, "email": user.email}})
 
 
 @app.post("/api/register")
@@ -1056,23 +1068,20 @@ def api_register():
     if is_rate_limited(f"api_register:{ip}", limit=10, window_sec=60):
         return jsonify({"error": "rate_limited"}), 429
     data = request.get_json(silent=True) or {}
-    username = str(data.get("username", "")).strip().lower()
     email = str(data.get("email", "")).strip().lower()
     password = str(data.get("password", ""))
-    if len(username) < 3:
-        return jsonify({"error": "invalid_username"}), 400
     if "@" not in email:
         return jsonify({"error": "invalid_email"}), 400
     if len(password) < 6:
         return jsonify({"error": "invalid_password"}), 400
-    if User.query.filter((User.username == username) | (User.email == email)).first():
+    if User.query.filter((User.username == email) | (User.email == email)).first():
         return jsonify({"error": "already_exists"}), 409
-    user = User(username=username, email=email, password_hash=generate_password_hash(password))
+    user = User(username=email, email=email, password_hash=generate_password_hash(password))
     db.session.add(user)
     db.session.commit()
     get_or_create_profile(user.id)
     token = token_serializer.dumps({"uid": user.id, "nonce": secrets.token_hex(8)})
-    return jsonify({"token": token, "user": {"id": user.id, "username": user.username}}), 201
+    return jsonify({"token": token, "user": {"id": user.id, "email": user.email}}), 201
 
 
 @app.get("/api/profile")

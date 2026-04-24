@@ -4,6 +4,27 @@
     <h2>Ayarlar</h2>
 </div>
 
+<div class="card">
+    <h3>Kısayollar</h3>
+    <div class="links">
+        <a class="button-link" href="{{ url_for('profile') }}">Profil</a>
+        <a class="button-link" href="{{ apk_url }}">APK Uygulama İndir</a>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Rapor İşlemleri</h3>
+    <div class="links">
+        <a class="button-link" href="{{ url_for('export_reports_xlsx', year=selected_year, period=period_value) }}">Excel Aktar</a>
+        <a class="button-link" href="{{ url_for('export_reports_csv', year=selected_year, period=period_value) }}">Dışa Aktar (CSV)</a>
+    </div>
+    <form method="post" action="{{ url_for('import_reports_backup') }}" enctype="multipart/form-data" class="import-form" style="margin-top:10px;">
+        <input type="hidden" name="back" value="settings">
+        <input type="file" name="backup_file" accept=".json,application/json,text/json" required>
+        <button type="submit">İçe Aktar</button>
+    </form>
+</div>
+
 <div class="card" id="apk-refresh">
     <h3>APK'dan Güncelle</h3>
     <p>Bu işlem web tarafındaki tüm kayıtları temizler. Sonra APK'de giriş/senkron yaptığınızda veriler tekrar web'e gelir.</p>
