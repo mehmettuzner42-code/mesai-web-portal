@@ -5,10 +5,16 @@
 </div>
 
 <div class="card">
-    <h3>Kısayollar</h3>
+    <h3>Uygulama</h3>
     <div class="links">
-        <a class="button-link" href="{{ url_for('profile') }}">Profil</a>
         <a class="button-link" href="{{ apk_url }}">APK Uygulama İndir</a>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Profil Ayarları</h3>
+    <div class="links">
+        <a class="button-link" href="{{ url_for('profile') }}">Profil Bilgileri</a>
     </div>
 </div>
 
@@ -16,6 +22,12 @@
     <h3>Rapor İşlemleri</h3>
     <div class="links">
         <a class="button-link" href="{{ url_for('export_reports_xlsx', year=selected_year, period=period_value) }}">Excel Aktar</a>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Yedekleme</h3>
+    <div class="links">
         <a class="button-link" href="{{ url_for('export_reports_csv', year=selected_year, period=period_value) }}">Dışa Aktar (CSV)</a>
     </div>
     <form method="post" action="{{ url_for('import_reports_backup') }}" enctype="multipart/form-data" class="import-form" style="margin-top:10px;">
