@@ -164,7 +164,7 @@ button:hover {
 }
 
 .recent-scroll {
-    max-height: 360px;
+    max-height: 480px;
     overflow-y: auto;
 }
 
@@ -287,6 +287,10 @@ code {
 
     table.compact-table {
         min-width: 640px;
+    }
+
+    .recent-scroll {
+        max-height: 560px;
     }
 
     .button-link {
