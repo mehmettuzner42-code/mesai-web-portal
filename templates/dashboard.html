@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="header-row">
-    <h2>{{ user.email }} - Mesai Paneli</h2>
+    <h2>Mesai Paneli</h2>
 </div>
 
 <div class="card">
@@ -15,7 +15,7 @@
 
 <div class="card">
     <h3>Mesai Girişi</h3>
-    <form method="post" class="grid two-col entry-form">
+    <form method="post" class="grid two-col entry-form mobile-entry-form">
         <label>Tarih
             <input type="date" name="work_date" id="work_date" required>
         </label>
@@ -50,7 +50,7 @@
 <div class="card">
     <h3>Son Kayıtlar</h3>
     <div class="table-wrap recent-scroll">
-        <table>
+        <table class="compact-table">
             <thead>
                 <tr>
                     <th>Tarih</th>
@@ -101,12 +101,6 @@
             </tbody>
         </table>
     </div>
-</div>
-
-<div class="card">
-    <h3>Telefon Senkron API Bilgisi</h3>
-    <p>Telefon uygulaması entegrasyonu için geçici API token:</p>
-    <code>{{ api_token }}</code>
 </div>
 
 <script>

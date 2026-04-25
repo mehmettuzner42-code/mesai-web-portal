@@ -20,9 +20,7 @@
 
 <div class="card">
     <h3>Rapor İşlemleri</h3>
-    <div class="links">
-        <a class="button-link" href="{{ url_for('export_reports_xlsx', year=selected_year, period=period_value) }}">Excel Aktar</a>
-    </div>
+    <p>Excel aktarımı Raporlar ekranından yıl/dönem seçerek yapabilirsiniz.</p>
 </div>
 
 <div class="card">
@@ -34,6 +32,24 @@
         <input type="hidden" name="back" value="settings">
         <input type="file" name="backup_file" accept=".json,application/json,text/json" required>
         <button type="submit">İçe Aktar</button>
+    </form>
+</div>
+
+<div class="card" id="change-password">
+    <h3>Şifre Değiştir</h3>
+    <form method="post" class="grid two-col">
+        <input type="hidden" name="action" value="change_password">
+        <label>Eski Şifre
+            <input type="password" name="old_password" required>
+        </label>
+        <label>Yeni Şifre
+            <input type="password" name="new_password" required>
+        </label>
+        <label>Yeni Şifre (Tekrar)
+            <input type="password" name="new_password_confirm" required>
+        </label>
+        <div class="entry-spacer" aria-hidden="true"></div>
+        <button type="submit" class="full">Tamam</button>
     </form>
 </div>
 

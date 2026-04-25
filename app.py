@@ -481,7 +481,23 @@ def settings_page():
     if request.method == "POST":
         action = request.form.get("action", "").strip()
         try:
-            if action == "apk_refresh":
+            if action == "change_password":
+                old_password = request.form.get("old_password", "")
+                new_password = request.form.get("new_password", "")
+                new_password_confirm = request.form.get("new_password_confirm", "")
+                if not check_password_hash(user.password_hash, old_password):
+                    flash("Eski şifre hatalı.", "error")
+                    return redirect(url_for("settings_page"))
+                if len(new_password) < 6:
+                    flash("Yeni şifre en az 6 karakter olmalı.", "error")
+                    return redirect(url_for("settings_page"))
+                if new_password != new_password_confirm:
+                    flash("Yeni şifre tekrar alanı uyuşmuyor.", "error")
+                    return redirect(url_for("settings_page"))
+                user.password_hash = generate_password_hash(new_password)
+                db.session.commit()
+                flash("Şifre başarıyla değiştirildi.", "success")
+            elif action == "apk_refresh":
                 OvertimeEntry.query.filter_by(user_id=user.id).delete()
                 p = get_or_create_profile(user.id)
                 p.daire_baskanligi = ""
@@ -1082,6 +1098,22 @@ def api_register():
     get_or_create_profile(user.id)
     token = token_serializer.dumps({"uid": user.id, "nonce": secrets.token_hex(8)})
     return jsonify({"token": token, "user": {"id": user.id, "email": user.email}}), 201
+
+
+@app.post("/api/change-password")
+@api_auth_required
+def api_change_password():
+    user = request.api_user
+    data = request.get_json(silent=True) or {}
+    old_password = str(data.get("oldPassword", ""))
+    new_password = str(data.get("newPassword", ""))
+    if not check_password_hash(user.password_hash, old_password):
+        return jsonify({"error": "invalid_old_password"}), 400
+    if len(new_password) < 6:
+        return jsonify({"error": "invalid_new_password"}), 400
+    user.password_hash = generate_password_hash(new_password)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @app.get("/api/profile")

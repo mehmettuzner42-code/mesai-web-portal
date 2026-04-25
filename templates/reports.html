@@ -10,16 +10,16 @@
 </div>
 
 <div class="card">
-    <form method="get" action="{{ url_for('reports') }}" class="grid two-col">
+    <form method="get" action="{{ url_for('reports') }}" class="grid two-col reports-filter-form" id="reportsFilterForm">
         <label>Yıl Seç
-            <select name="year">
+            <select name="year" id="yearSelect">
                 {% for y in years %}
                 <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
                 {% endfor %}
             </select>
         </label>
         <label>Dönem Seç
-            <select name="period">
+            <select name="period" id="periodSelect">
                 {% for sy, sm in period_options %}
                     {% set em = 1 if sm == 12 else sm + 1 %}
                     <option value="{{ sy }}-{{ '%02d'|format(sm) }}" {% if active_start[0] == sy and active_start[1] == sm %}selected{% endif %}>
@@ -28,6 +28,7 @@
                 {% endfor %}
             </select>
         </label>
+        <button class="full" type="button" id="btnExcelExport">Excel Aktar</button>
         <button class="full" type="submit">Göster</button>
     </form>
     <p><strong>Dönem:</strong> {{ format_dmy(period_start) }} - {{ format_dmy(period_end) }}</p>
@@ -36,7 +37,7 @@
 <div class="card">
     <h3>Dönem Kayıtları</h3>
     <div class="table-wrap">
-        <table>
+        <table class="compact-table">
             <thead>
                 <tr>
                     <th>Tarih</th>
@@ -80,19 +81,29 @@
     </div>
 </div>
 
-<div class="card">
-    <h3>Dönem Toplamları</h3>
-    <p>%60 Toplam: <strong>{{ fmt_num(period_total.pct60) }}</strong></p>
-    <p>%15 Toplam: <strong>{{ fmt_num(period_total.pct15) }}</strong></p>
-    <p>Pazar Toplam: <strong>{{ fmt_num(period_total.pazar) }}</strong></p>
-    <p>Bayram Toplam: <strong>{{ fmt_num(period_total.bayram) }}</strong></p>
-</div>
+<div class="totals-grid">
+    <div class="card">
+        <h3>Dönem Toplamları</h3>
+        <p>%60 Toplam: <strong>{{ fmt_num(period_total.pct60) }}</strong></p>
+        <p>%15 Toplam: <strong>{{ fmt_num(period_total.pct15) }}</strong></p>
+        <p>Pazar Toplam: <strong>{{ fmt_num(period_total.pazar) }}</strong></p>
+        <p>Bayram Toplam: <strong>{{ fmt_num(period_total.bayram) }}</strong></p>
+    </div>
 
-<div class="card">
-    <h3>Yıl Toplamları</h3>
-    <p>%60 Toplam: <strong>{{ fmt_num(year_total.pct60) }}</strong></p>
-    <p>%15 Toplam: <strong>{{ fmt_num(year_total.pct15) }}</strong></p>
-    <p>Pazar Toplam: <strong>{{ fmt_num(year_total.pazar) }}</strong></p>
-    <p>Bayram Toplam: <strong>{{ fmt_num(year_total.bayram) }}</strong></p>
+    <div class="card">
+        <h3>Yıl Toplamları</h3>
+        <p>%60 Toplam: <strong>{{ fmt_num(year_total.pct60) }}</strong></p>
+        <p>%15 Toplam: <strong>{{ fmt_num(year_total.pct15) }}</strong></p>
+        <p>Pazar Toplam: <strong>{{ fmt_num(year_total.pazar) }}</strong></p>
+        <p>Bayram Toplam: <strong>{{ fmt_num(year_total.bayram) }}</strong></p>
+    </div>
 </div>
+<script>
+document.getElementById("btnExcelExport").addEventListener("click", function () {
+    const year = document.getElementById("yearSelect").value;
+    const period = document.getElementById("periodSelect").value;
+    const qs = `year=${encodeURIComponent(year)}&period=${encodeURIComponent(period)}`;
+    window.location.href = `{{ url_for('export_reports_xlsx') }}?${qs}`;
+});
+</script>
 {% endblock %}

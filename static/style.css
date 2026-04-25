@@ -181,6 +181,7 @@ th, td {
     text-align: center;
     vertical-align: middle;
     font-size: 14px;
+    white-space: nowrap;
 }
 
 .period-row td {
@@ -206,6 +207,12 @@ code {
 
 .entry-spacer {
     visibility: hidden;
+}
+
+.totals-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
 }
 
 @media (max-width: 768px) {
@@ -238,8 +245,21 @@ code {
         grid-template-columns: 1fr;
     }
 
+    .mobile-entry-form.two-col {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .reports-filter-form.two-col {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .full {
         grid-column: auto;
+    }
+
+    .mobile-entry-form .full,
+    .reports-filter-form .full {
+        grid-column: 1 / -1;
     }
 
     .entry-spacer {
@@ -252,11 +272,19 @@ code {
     }
 
     th, td {
-        font-size: 13px;
-        padding: 6px;
+        font-size: 12px;
+        padding: 4px;
+    }
+
+    table.compact-table {
+        min-width: 640px;
     }
 
     .button-link {
         padding: 8px 10px;
+    }
+
+    .totals-grid {
+        grid-template-columns: 1fr;
     }
 }
