@@ -144,10 +144,11 @@ table button.danger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 26px;
+    height: 28px;
     padding: 2px 8px;
-    font-size: 10px;
-    line-height: 1.1;
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 600;
 }
 
 table form {
@@ -319,9 +320,10 @@ code {
 
     table .button-link.mini,
     table button.danger {
-        height: 24px;
+        height: 26px;
         padding: 1px 7px;
-        font-size: 9px;
+        font-size: 10px;
+        line-height: 1;
     }
 
     table.compact-table {
