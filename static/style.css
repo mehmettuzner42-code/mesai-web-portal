@@ -253,6 +253,11 @@ code {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    /* Mobilde ilk alan (Tarih) tek satır olsun */
+    .mobile-entry-form > label:first-of-type {
+        grid-column: 1 / -1;
+    }
+
     .reports-filter-form.two-col {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
