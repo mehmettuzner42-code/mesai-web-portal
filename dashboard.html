@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h2>Mesai Paneli</h2>
+</div>
+
+<div class="card">
+    <h3>Profil Bilgileri</h3>
+    <p><strong>Daire Başkanlığı:</strong> {{ profile.daire_baskanligi or "-" }}</p>
+    <p><strong>Şube Müdürlüğü:</strong> {{ profile.sube_mudurlugu or "-" }}</p>
+    <p><strong>Ad Soyad:</strong> {{ profile.ad_soyad or "-" }}</p>
+    <p><strong>Sicil No:</strong> {{ profile.sicil_no or "-" }}</p>
+    <p><strong>Ekip Kodu:</strong> {{ profile.ekip_kodu or "-" }}</p>
+</div>
+
+<div class="card">
+    <h3>Mesai Girişi</h3>
+    <form method="post" class="grid two-col entry-form mobile-entry-form">
+        <label class="full">Tarih
+            <input type="date" name="work_date" id="work_date" required>
+        </label>
+        <div class="entry-spacer" aria-hidden="true"></div>
+        <label>Başlama
+            <input type="time" name="start_time" id="start_time" required>
+        </label>
+        <label>Bitiş
+            <input type="time" name="end_time" id="end_time" required>
+        </label>
+        <label>%60
+            <input name="pct60" id="pct60" placeholder="0">
+        </label>
+        <label>%15
+            <input name="pct15" id="pct15" placeholder="0">
+        </label>
+        <label>Pazar
+            <input name="pazar" id="pazar" placeholder="0">
+        </label>
+        <label>Bayram
+            <input name="bayram" id="bayram" placeholder="0">
+        </label>
+        <label class="full">Açıklama
+            <input name="description" placeholder="Açıklama">
+        </label>
+        <button type="submit" class="full">Kaydet</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Son Kayıtlar</h3>
+    <div class="table-wrap recent-scroll">
+        <table class="compact-table">
+            <thead>
+                <tr>
+                    <th>Tarih</th>
+                    <th>Gün</th>
+                    <th>Başlama</th>
+                    <th>Bitiş</th>
+                    <th>%60</th>
+                    <th>%15</th>
+                    <th>Pazar</th>
+                    <th>Bayram</th>
+                    <th>Açıklama</th>
+                    <th>Düzenle</th>
+                    <th>Sil</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in recent_items %}
+                {% if item.kind == 'header' %}
+                <tr class="period-row">
+                    <td colspan="11">{{ item.label }}</td>
+                </tr>
+                {% else %}
+                {% set e = item.entry %}
+                    <tr>
+                        <td>{{ e.work_date.strftime('%d.%m.%Y') }}</td>
+                        <td>{{ ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar'][e.work_date.weekday()] }}</td>
+                        <td>{{ e.start_time }}</td>
+                        <td>{{ e.end_time }}</td>
+                        <td>{{ fmt_num(e.pct60) }}</td>
+                        <td>{{ fmt_num(e.pct15) }}</td>
+                        <td>{{ fmt_num(e.pazar) }}</td>
+                        <td>{{ fmt_num(e.bayram) }}</td>
+                        <td>{{ e.description }}</td>
+                        <td><a class="button-link mini" href="{{ url_for('edit_entry', entry_id=e.id, back='dashboard') }}">Düzenle</a></td>
+                        <td>
+                            <form method="post" action="{{ url_for('delete_entry', entry_id=e.id) }}" onsubmit="return confirm('Bu veriyi silmek istediğinizden emin misiniz?');">
+                                <input type="hidden" name="back" value="dashboard">
+                                <button type="submit" class="danger">Sil</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% endif %}
+                {% else %}
+                <tr>
+                    <td colspan="11">Henüz kayıt yok.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function toMinutes(hhmm) {
+    if (!hhmm || !hhmm.includes(":")) return null;
+    const [h, m] = hhmm.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return h * 60 + m;
+}
+function minutesToHhmm(totalMin) {
+    let m = ((totalMin % 1440) + 1440) % 1440;
+    const h = Math.floor(m / 60);
+    const mm = m % 60;
+    return String(h).padStart(2, "0") + ":" + String(mm).padStart(2, "0");
+}
+function parseHours(text) {
+    if (text === null || text === undefined) return null;
+    const t = String(text).trim().replace(",", ".");
+    if (!t) return null;
+    const n = Number(t);
+    if (Number.isNaN(n)) return null;
+    return n;
+}
+function applyDefaults() {
+    const d = document.getElementById("work_date").value;
+    if (!d) return;
+    fetch(`/api/day-defaults?date=${encodeURIComponent(d)}`)
+        .then(r => r.json())
+        .then(v => {
+            document.getElementById("start_time").value = v.start || "";
+            document.getElementById("end_time").value = v.end || "";
+            document.getElementById("pct60").value = formatOut(v.pct60);
+            document.getElementById("pct15").value = formatOut(v.pct15);
+            document.getElementById("pazar").value = formatOut(v.pazar);
+            document.getElementById("bayram").value = formatOut(v.bayram);
+        })
+        .catch(() => {});
+}
+function formatOut(v){
+    if (v === null || v === undefined) return "";
+    const n = Number(v);
+    if (Math.abs(n) < 1e-9) return "";
+    if (Number.isInteger(n)) return String(n);
+    return n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "").replace(".", ",");
+}
+function recalc() {
+    const d = document.getElementById("work_date").value;
+    const end = document.getElementById("end_time").value;
+    if (!d || !end) return;
+    fetch(`/api/day-defaults?date=${encodeURIComponent(d)}&endTime=${encodeURIComponent(end)}`)
+        .then(r => r.json())
+        .then(v => {
+            document.getElementById("pct60").value = formatOut(v.pct60);
+            document.getElementById("pct15").value = formatOut(v.pct15);
+            document.getElementById("pazar").value = formatOut(v.pazar);
+            document.getElementById("bayram").value = formatOut(v.bayram);
+        })
+        .catch(() => {});
+}
+function on60Changed() {
+    const d = document.getElementById("work_date").value;
+    const start = document.getElementById("start_time").value;
+    const h = parseHours(document.getElementById("pct60").value);
+    if (!d || !start || h === null || h <= 0) return;
+    const sMin = toMinutes(start);
+    if (sMin === null) return;
+    fetch(`/api/day-defaults?date=${encodeURIComponent(d)}`)
+        .then(r => r.json())
+        .then(v => {
+            if (v.isHoliday || v.weekday === 6) return; // resmi tatil/pazar: %60'tan bitiş türetme
+            const breakH = (v.weekday === 5) ? 1.0 : 0.0; // cumartesi öğle arası
+            const endMin = sMin + Math.round((h + breakH) * 60);
+            document.getElementById("end_time").value = minutesToHhmm(endMin);
+            recalc();
+        })
+        .catch(() => {});
+}
+document.getElementById("work_date").addEventListener("change", applyDefaults);
+document.getElementById("start_time").addEventListener("change", recalc);
+document.getElementById("end_time").addEventListener("change", recalc);
+document.getElementById("pct60").addEventListener("change", on60Changed);
+document.getElementById("pct60").addEventListener("input", on60Changed);
+document.addEventListener("DOMContentLoaded", function () {
+    const d = document.getElementById("work_date");
+    if (!d.value) d.value = new Date().toISOString().slice(0,10);
+    applyDefaults();
+});
+</script>
+{% endblock %}
