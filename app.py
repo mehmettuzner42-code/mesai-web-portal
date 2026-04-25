@@ -948,61 +948,47 @@ def export_reports_xlsx():
         os.path.join(os.path.dirname(__file__), "..", "app", "src", "main", "assets", "sablon.xlsx"),
     ]
     template_path = next((p for p in template_candidates if os.path.exists(p)), "")
-    if template_path:
-        wb = load_workbook(template_path)
-        ws = wb[wb.sheetnames[0]]
-        ws["D3"] = profile.daire_baskanligi
-        ws["D4"] = profile.sube_mudurlugu
-        ws["D5"] = profile.ad_soyad
-        ws["D6"] = profile.sicil_no
-        end_month_name = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"][p_end.month - 1]
-        ws["H10"] = end_month_name
-        ws["J10"] = p_end.year
-        day_map = {r["work_date"].isoformat(): r for r in rows}
-        next_y, next_m = add_month(sy, sm)
-        for row_num in range(14, 45):
-            day_num = 24 + (row_num - 14) if row_num <= 21 else (row_num - 21)
+    if not template_path:
+        flash("Excel şablonu bulunamadı (sablon.xlsx). Lütfen şablon dosyasını web-portal klasörüne ekleyin.", "error")
+        return redirect(url_for("reports", year=year, period=period))
+
+    wb = load_workbook(template_path)
+    ws = wb[wb.sheetnames[0]]
+    ws["D3"] = profile.daire_baskanligi
+    ws["D4"] = profile.sube_mudurlugu
+    ws["D5"] = profile.ad_soyad
+    ws["D6"] = profile.sicil_no
+    end_month_name = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"][p_end.month - 1]
+    ws["H10"] = end_month_name
+    ws["J10"] = p_end.year
+    day_map = {r["work_date"].isoformat(): r for r in rows}
+    next_y, next_m = add_month(sy, sm)
+    for row_num in range(14, 45):
+        day_num = 24 + (row_num - 14) if row_num <= 21 else (row_num - 21)
+        cur_date = None
+        try:
+            if row_num <= 21:
+                cur_date = date(sy, sm, day_num)
+            else:
+                cur_date = date(next_y, next_m, day_num)
+        except Exception:
             cur_date = None
-            try:
-                if row_num <= 21:
-                    cur_date = date(sy, sm, day_num)
-                else:
-                    cur_date = date(next_y, next_m, day_num)
-            except Exception:
-                cur_date = None
-            data = day_map.get(cur_date.isoformat()) if cur_date else None
-            ws[f"B{row_num}"] = data["start_time"] if data else None
-            ws[f"C{row_num}"] = data["end_time"] if data else None
-            ws[f"D{row_num}"] = data["pct60"] if data and abs(data["pct60"]) > 1e-9 else None
-            ws[f"E{row_num}"] = data["pct15"] if data and abs(data["pct15"]) > 1e-9 else None
-            ws[f"F{row_num}"] = data["pazar"] if data and abs(data["pazar"]) > 1e-9 else None
-            ws[f"G{row_num}"] = data["bayram"] if data and abs(data["bayram"]) > 1e-9 else None
-            ws[f"H{row_num}"] = data["description"] if data and data["description"] else None
-            has_any = data and (
-                data["start_time"] or data["end_time"] or abs(data["pct60"]) > 1e-9 or abs(data["pct15"]) > 1e-9 or abs(data["pazar"]) > 1e-9 or abs(data["bayram"]) > 1e-9 or data["description"]
-            )
-            ws[f"I{row_num}"] = profile.ekip_kodu if has_any else None
-        ws["D45"] = totals["pct60"] if abs(totals["pct60"]) > 1e-9 else None
-        ws["E45"] = totals["pct15"] if abs(totals["pct15"]) > 1e-9 else None
-        ws["F45"] = totals["pazar"] if abs(totals["pazar"]) > 1e-9 else None
-        ws["G45"] = totals["bayram"] if abs(totals["bayram"]) > 1e-9 else None
-    else:
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Mesai"
-        ws.append(["Tarih", "Gun", "Baslama", "Bitis", "%60", "%15", "Pazar", "Bayram", "Aciklama"])
-        for r in rows:
-            ws.append([
-                format_dmy(r["work_date"]),
-                weekday_tr(r["work_date"]),
-                r["start_time"],
-                r["end_time"],
-                r["pct60"],
-                r["pct15"],
-                r["pazar"],
-                r["bayram"],
-                r["description"],
-            ])
+        data = day_map.get(cur_date.isoformat()) if cur_date else None
+        ws[f"B{row_num}"] = data["start_time"] if data else None
+        ws[f"C{row_num}"] = data["end_time"] if data else None
+        ws[f"D{row_num}"] = data["pct60"] if data and abs(data["pct60"]) > 1e-9 else None
+        ws[f"E{row_num}"] = data["pct15"] if data and abs(data["pct15"]) > 1e-9 else None
+        ws[f"F{row_num}"] = data["pazar"] if data and abs(data["pazar"]) > 1e-9 else None
+        ws[f"G{row_num}"] = data["bayram"] if data and abs(data["bayram"]) > 1e-9 else None
+        ws[f"H{row_num}"] = data["description"] if data and data["description"] else None
+        has_any = data and (
+            data["start_time"] or data["end_time"] or abs(data["pct60"]) > 1e-9 or abs(data["pct15"]) > 1e-9 or abs(data["pazar"]) > 1e-9 or abs(data["bayram"]) > 1e-9 or data["description"]
+        )
+        ws[f"I{row_num}"] = profile.ekip_kodu if has_any else None
+    ws["D45"] = totals["pct60"] if abs(totals["pct60"]) > 1e-9 else None
+    ws["E45"] = totals["pct15"] if abs(totals["pct15"]) > 1e-9 else None
+    ws["F45"] = totals["pazar"] if abs(totals["pazar"]) > 1e-9 else None
+    ws["G45"] = totals["bayram"] if abs(totals["bayram"]) > 1e-9 else None
     mem = io.BytesIO()
     wb.save(mem)
     mem.seek(0)
