@@ -215,6 +215,10 @@ code {
     gap: 12px;
 }
 
+.totals-grid .card {
+    margin: 0;
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 0 10px;
@@ -285,6 +289,21 @@ code {
     }
 
     .totals-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .totals-grid .card {
+        padding: 8px;
+    }
+
+    .totals-grid h3 {
+        font-size: 14px;
+        margin: 0 0 6px 0;
+    }
+
+    .totals-grid p {
+        font-size: 12px;
+        margin: 4px 0;
     }
 }

@@ -943,8 +943,12 @@ def export_reports_xlsx():
         "bayram": sum(r["bayram"] for r in rows),
     }
 
-    template_path = os.path.join(os.path.dirname(__file__), "..", "app", "src", "main", "assets", "sablon.xlsx")
-    if os.path.exists(template_path):
+    template_candidates = [
+        os.path.join(os.path.dirname(__file__), "sablon.xlsx"),
+        os.path.join(os.path.dirname(__file__), "..", "app", "src", "main", "assets", "sablon.xlsx"),
+    ]
+    template_path = next((p for p in template_candidates if os.path.exists(p)), "")
+    if template_path:
         wb = load_workbook(template_path)
         ws = wb[wb.sheetnames[0]]
         ws["D3"] = profile.daire_baskanligi
