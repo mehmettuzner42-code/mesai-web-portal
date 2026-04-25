@@ -138,6 +138,23 @@ button:hover {
     font-size: 12px;
 }
 
+/* Son Kayıtlar / Dönem Kayıtları: Sil ve Düzenle aynı yükseklikte, yazı biraz daha küçük */
+table .button-link.mini,
+table button.danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: 11px;
+    line-height: 1.1;
+}
+
+table form {
+    margin: 0;
+    display: inline;
+}
+
 .import-form {
     display: flex;
     gap: 8px;
@@ -177,11 +194,17 @@ table {
 
 th, td {
     border: 1px solid #e2e8f0;
-    padding: 8px;
+    padding: 6px;
     text-align: center;
     vertical-align: middle;
     font-size: 14px;
     white-space: nowrap;
+}
+
+table.compact-table th,
+table.compact-table td {
+    padding: 4px 4px;
+    font-size: 13px;
 }
 
 .period-row td {
@@ -283,6 +306,19 @@ code {
     th, td {
         font-size: 12px;
         padding: 4px;
+    }
+
+    table.compact-table th,
+    table.compact-table td {
+        padding: 3px 3px;
+        font-size: 11px;
+    }
+
+    table .button-link.mini,
+    table button.danger {
+        min-height: 30px;
+        padding: 3px 8px;
+        font-size: 10px;
     }
 
     table.compact-table {
