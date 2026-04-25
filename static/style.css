@@ -144,7 +144,7 @@ table button.danger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 28px;
+    height: 25px;
     padding: 2px 8px;
     font-size: 11px;
     line-height: 1;
@@ -320,7 +320,7 @@ code {
 
     table .button-link.mini,
     table button.danger {
-        height: 26px;
+        height: 23px;
         padding: 1px 7px;
         font-size: 10px;
         line-height: 1;
