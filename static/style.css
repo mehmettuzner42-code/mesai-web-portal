@@ -144,9 +144,9 @@ table button.danger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 32px;
-    padding: 4px 10px;
-    font-size: 11px;
+    height: 26px;
+    padding: 2px 8px;
+    font-size: 10px;
     line-height: 1.1;
 }
 
@@ -194,17 +194,19 @@ table {
 
 th, td {
     border: 1px solid #e2e8f0;
-    padding: 6px;
+    padding: 5px;
     text-align: center;
     vertical-align: middle;
     font-size: 14px;
+    line-height: 1.15;
     white-space: nowrap;
 }
 
 table.compact-table th,
 table.compact-table td {
-    padding: 4px 4px;
-    font-size: 13px;
+    padding: 2px 3px;
+    font-size: 12px;
+    line-height: 1.1;
 }
 
 .period-row td {
@@ -310,15 +312,16 @@ code {
 
     table.compact-table th,
     table.compact-table td {
-        padding: 3px 3px;
-        font-size: 11px;
+        padding: 2px 2px;
+        font-size: 10px;
+        line-height: 1.05;
     }
 
     table .button-link.mini,
     table button.danger {
-        min-height: 30px;
-        padding: 3px 8px;
-        font-size: 10px;
+        height: 24px;
+        padding: 1px 7px;
+        font-size: 9px;
     }
 
     table.compact-table {
