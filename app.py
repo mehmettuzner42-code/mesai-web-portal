@@ -60,6 +60,12 @@ token_serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
 _RATE_LIMIT_STATE = {}
 
 
+@app.get("/healthz")
+def healthz():
+    # Keep-alive pingi icin hafif endpoint.
+    return jsonify({"ok": True, "service": "mesai-web-portal"}), 200
+
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False, index=True)
