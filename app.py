@@ -409,6 +409,11 @@ def apply_security_headers(resp):
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     resp.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'"
+    # Dinamik sayfalar cache'lenmesin: farkli kullaniciya geciste eski profil/veri gorunmesini engeller.
+    if not request.path.startswith("/static/"):
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
     return resp
 
 
@@ -464,6 +469,7 @@ def login():
         if not user or not check_password_hash(user.password_hash, password):
             flash("E-posta veya şifre hatalı.", "error")
             return render_template("login.html")
+        session.clear()
         session["user_id"] = user.id
         session["api_token"] = token_serializer.dumps({"uid": user.id, "nonce": secrets.token_hex(8)})
         return redirect(url_for("dashboard"))
@@ -1029,6 +1035,7 @@ def apk_auto_login():
     if not user:
         session.clear()
         return redirect(url_for("login"))
+    session.clear()
     session["user_id"] = user.id
     # web oturumu için yeni token üret (nonce taze kalsın)
     session["api_token"] = token_serializer.dumps({"uid": user.id, "nonce": secrets.token_hex(8)})
