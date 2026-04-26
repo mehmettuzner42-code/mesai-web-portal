@@ -1,4 +1,5 @@
 import csv
+import glob
 import io
 import json
 import os
@@ -1762,9 +1763,28 @@ def download_apk():
     if user is None:
         flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
         return redirect(url_for("login"))
-    apk_path = os.path.join(os.path.dirname(__file__), "..", "app", "build", "outputs", "apk", "debug", "app-debug.apk")
-    if os.path.exists(apk_path):
-        return send_file(apk_path, as_attachment=True, download_name="MesaiApp.apk")
+
+    # Dis URL tanimliysa (ornegin GitHub release), tek noktadan yonlendir.
+    configured_apk_url = (app.config.get("APK_URL") or "").strip()
+    if configured_apk_url and configured_apk_url != "/download-apk":
+        return redirect(configured_apk_url)
+
+    # Yerelde/depoda bulunan APK dosyalari arasindan en yeni olani indir.
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    candidate_patterns = [
+        os.path.join(repo_root, "app", "build", "outputs", "apk", "release", "*.apk"),
+        os.path.join(repo_root, "app", "build", "outputs", "apk", "debug", "*.apk"),
+        os.path.join(repo_root, "web-portal", "static", "apk", "*.apk"),
+        os.path.join(repo_root, "apk", "*.apk"),
+    ]
+    candidates = []
+    for pattern in candidate_patterns:
+        candidates.extend(glob.glob(pattern))
+    candidates = [p for p in candidates if os.path.exists(p)]
+    if candidates:
+        latest_apk = max(candidates, key=lambda p: os.path.getmtime(p))
+        return send_file(latest_apk, as_attachment=True, download_name=os.path.basename(latest_apk))
+
     flash("APK dosyası henüz üretilmemiş.", "error")
     return redirect(url_for("dashboard"))
 

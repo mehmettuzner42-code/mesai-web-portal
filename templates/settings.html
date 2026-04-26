@@ -7,7 +7,7 @@
 <div class="card">
     <h3>Uygulama</h3>
     <div class="links">
-        <a class="button-link" href="{{ apk_url }}">APK Uygulama İndir</a>
+        <a class="button-link" href="{{ url_for('download_apk') }}">APK Uygulama İndir</a>
     </div>
 </div>
 
@@ -48,21 +48,4 @@
     </form>
 </div>
 
-<div class="card" id="apk-refresh">
-    <h3>APK'dan Güncelle</h3>
-    <p>Bu işlem web tarafındaki tüm kayıtları temizler. Sonra APK'de giriş/senkron yaptığınızda veriler tekrar web'e gelir.</p>
-    <form method="post" onsubmit="return confirm('Web verileri temizlensin ve APK senkronuna hazırlansın mı?');">
-        <input type="hidden" name="action" value="apk_refresh">
-        <button type="submit">APK'dan Güncelle</button>
-    </form>
-</div>
-
-<div class="card" id="clear-all">
-    <h3>Tüm Verileri Sil</h3>
-    <p>Bu işlem web tarafındaki tüm mesai ve profil bilgilerini siler.</p>
-    <form method="post" onsubmit="return confirm('Web tarafındaki TÜM veriler silinsin mi?');">
-        <input type="hidden" name="action" value="clear_all">
-        <button type="submit" class="danger">Tüm Verileri Sil</button>
-    </form>
-</div>
 {% endblock %}
