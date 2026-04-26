@@ -112,6 +112,8 @@ class DelegatedAdminPermission(db.Model):
     owner_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     delegate_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True, index=True)
     allowed_user_ids_json = db.Column(db.Text, default="[]", nullable=False)
+    # Legacy kolon (eski surumlerle uyumluluk icin tutuluyor)
+    can_view_passwords = db.Column(db.Boolean, default=False, nullable=False)
     can_reset_password = db.Column(db.Boolean, default=False, nullable=False)
     can_view_users_screen = db.Column(db.Boolean, default=True, nullable=False)
     can_view_charts = db.Column(db.Boolean, default=False, nullable=False)
@@ -887,6 +889,7 @@ def admin_edit_permission(target_user_id: int):
             perm = DelegatedAdminPermission(owner_user_id=founder.id, delegate_user_id=target.id)
             db.session.add(perm)
         perm.allowed_user_ids_json = json.dumps(sorted(set(allowed_ids)))
+        perm.can_view_passwords = can_reset_password
         perm.can_reset_password = can_reset_password
         perm.can_view_users_screen = can_view_users_screen
         perm.can_view_charts = can_view_charts
@@ -1968,6 +1971,13 @@ def ensure_delegated_permission_columns():
                 "UPDATE delegated_admin_permission "
                 "SET can_reset_password = CASE WHEN can_view_passwords IS NULL THEN can_reset_password ELSE can_view_passwords END "
                 "WHERE can_reset_password = FALSE"
+            )
+        )
+        db.session.execute(
+            db.text(
+                "UPDATE delegated_admin_permission "
+                "SET can_view_passwords = FALSE "
+                "WHERE can_view_passwords IS NULL"
             )
         )
     db.session.commit()

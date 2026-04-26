@@ -11,17 +11,23 @@
 
 <div class="card">
     <form method="post" action="{{ url_for('admin_export_selected_users_xlsx') }}">
-        <div class="admin-filter-bar">
-            <label>Daire Başkanlığı
+        <div class="admin-filter-bar users-filter-grid">
+            <div></div>
+            <div></div>
+            <div></div>
+            <label class="filter-col-daire">Daire Başkanlığı
                 <select id="usersFilterDaire">
                     <option value="">Tümü</option>
                 </select>
             </label>
-            <label>Şube Müdürlüğü
+            <label class="filter-col-sube">Şube Müdürlüğü
                 <select id="usersFilterSube">
                     <option value="">Tümü</option>
                 </select>
             </label>
+            <div></div>
+            <div></div>
+            <div></div>
         </div>
         <div class="table-wrap recent-scroll">
             <table class="compact-table" id="usersTable">

@@ -18,17 +18,22 @@
 
         <div class="permission-section">
         <h3>Görebileceği Kullanıcılar</h3>
-        <div class="admin-filter-bar">
-            <label>Daire Başkanlığı
+        <div class="admin-filter-bar perm-filter-grid">
+            <div></div>
+            <div></div>
+            <div></div>
+            <label class="filter-col-daire">Daire Başkanlığı
                 <select id="permFilterDaire">
                     <option value="">Tümü</option>
                 </select>
             </label>
-            <label>Şube Müdürlüğü
+            <label class="filter-col-sube">Şube Müdürlüğü
                 <select id="permFilterSube">
                     <option value="">Tümü</option>
                 </select>
             </label>
+            <div></div>
+            <div></div>
         </div>
         <div class="table-wrap recent-scroll">
             <table class="compact-table" id="permUsersTable">

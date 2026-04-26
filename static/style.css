@@ -204,10 +204,22 @@ table form {
 
 .admin-filter-bar {
     margin: 0 0 8px 0;
-    display: flex;
-    gap: 10px;
+    display: grid;
+    gap: 6px;
     align-items: end;
-    flex-wrap: wrap;
+}
+
+.users-filter-grid {
+    grid-template-columns: 42px 90px 170px 1fr 1fr 120px 220px 86px;
+}
+
+.perm-filter-grid {
+    grid-template-columns: 42px 90px 170px 1fr 1fr 120px 220px;
+}
+
+.admin-filter-bar .filter-col-daire,
+.admin-filter-bar .filter-col-sube {
+    width: 100%;
 }
 
 .permission-section {
@@ -300,11 +312,12 @@ table form {
     box-sizing: border-box;
     text-align: center;
     min-height: 34px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     font-size: 12px;
-    line-height: 1.2;
+    line-height: 1 !important;
+    padding: 0 10px !important;
 }
 
 .row-options-actions form {
@@ -570,7 +583,7 @@ code {
     }
 
     .admin-filter-bar {
-        flex-direction: column;
+        grid-template-columns: 1fr;
         align-items: stretch;
     }
 
