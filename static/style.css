@@ -221,11 +221,18 @@ table form {
 .admin-filter-bar .filter-col-sube {
     min-width: 300px;
     flex: 1 1 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow: visible;
 }
 
 .admin-filter-bar .filter-col-daire select,
 .admin-filter-bar .filter-col-sube select {
     width: 100%;
+    min-width: 100%;
+    box-sizing: border-box;
+    display: block;
 }
 
 .permission-section {
@@ -324,6 +331,11 @@ table form {
     font-size: 12px;
     line-height: 1 !important;
     padding: 0 10px !important;
+}
+
+/* Hidden attribute'u modal buton stilleri override etmesin */
+.row-options-actions [hidden] {
+    display: none !important;
 }
 
 .row-options-actions form {
