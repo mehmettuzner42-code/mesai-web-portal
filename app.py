@@ -656,10 +656,8 @@ def admin_users():
     allowed_ids = allowed_user_ids_for(login_user)
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
     # Tum kullanicilari profil ile birlikte listele
-    users = []
-    if can_users_screen:
-        users_query = User.query.order_by(User.created_at.desc())
-        users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
+    users_query = User.query.order_by(User.created_at.desc())
+    users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
     profiles = {p.user_id: p for p in UserProfile.query.all()}
     entry_counts = {
         uid: cnt

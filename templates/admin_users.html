@@ -10,10 +10,6 @@
 </div>
 
 <div class="card">
-    {% if not can_users_screen %}
-    <p>Bu kullanıcı için "Kullanıcı Ekranı Görme" yetkisi kapalı. Verilen diğer yetkileri kullanabilirsiniz.</p>
-    {% endif %}
-    {% if can_users_screen %}
     <form method="post" action="{{ url_for('admin_export_selected_users_xlsx') }}">
         <div class="admin-filter-bar">
             <label class="filter-col-daire">Daire Başkanlığı
@@ -116,7 +112,6 @@
             </label>
         </div>
     </form>
-    {% endif %}
 </div>
 
 <dialog id="rowOptionsDialog" class="row-options-dialog">
