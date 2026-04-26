@@ -18,10 +18,7 @@
 
         <div class="permission-section">
         <h3>Görebileceği Kullanıcılar</h3>
-        <div class="admin-filter-bar perm-filter-grid">
-            <div></div>
-            <div></div>
-            <div></div>
+        <div class="admin-filter-bar">
             <label class="filter-col-daire">Daire Başkanlığı
                 <select id="permFilterDaire">
                     <option value="">Tümü</option>
@@ -32,8 +29,6 @@
                     <option value="">Tümü</option>
                 </select>
             </label>
-            <div></div>
-            <div></div>
         </div>
         <div class="table-wrap recent-scroll">
             <table class="compact-table" id="permUsersTable">
@@ -76,7 +71,6 @@
     const selectAll = document.getElementById("permSelectAll");
     const filterDaire = document.getElementById("permFilterDaire");
     const filterSube = document.getElementById("permFilterSube");
-    const permFilterGrid = document.querySelector(".perm-filter-grid");
     if (!table || !selectAll || !filterDaire || !filterSube) return;
 
     function updateRowHighlight(checkbox) {
@@ -85,19 +79,6 @@
         tr.classList.toggle("selected-row", checkbox.checked);
     }
 
-    function syncFilterGridColumns() {
-        if (!permFilterGrid || !table) return;
-        const headCells = Array.from(table.querySelectorAll("thead tr:first-child th"));
-        if (!headCells.length) return;
-        const widths = headCells.map((th) => Math.round(th.getBoundingClientRect().width));
-        permFilterGrid.style.gridTemplateColumns = widths.map((w) => `${w}px`).join(" ");
-        const gridParent = permFilterGrid.parentElement;
-        if (gridParent) {
-            permFilterGrid.style.width = `${Math.round(table.getBoundingClientRect().width)}px`;
-            const left = table.getBoundingClientRect().left - gridParent.getBoundingClientRect().left;
-            permFilterGrid.style.marginLeft = `${Math.round(left)}px`;
-        }
-    }
 
     function visibleRows() {
         return Array.from(table.querySelectorAll("tbody tr.selectable-row")).filter((tr) => tr.style.display !== "none");
@@ -174,12 +155,6 @@
 
     refreshFilterOptions();
     applyFilters();
-    syncFilterGridColumns();
-    window.addEventListener("resize", syncFilterGridColumns);
-    const wrap = table.closest(".table-wrap");
-    if (wrap) {
-        wrap.addEventListener("scroll", syncFilterGridColumns);
-    }
 })();
 </script>
 {% endblock %}

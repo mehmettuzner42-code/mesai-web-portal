@@ -11,10 +11,7 @@
 
 <div class="card">
     <form method="post" action="{{ url_for('admin_export_selected_users_xlsx') }}">
-        <div class="admin-filter-bar users-filter-grid">
-            <div></div>
-            <div></div>
-            <div></div>
+        <div class="admin-filter-bar">
             <label class="filter-col-daire">Daire Başkanlığı
                 <select id="usersFilterDaire">
                     <option value="">Tümü</option>
@@ -25,9 +22,6 @@
                     <option value="">Tümü</option>
                 </select>
             </label>
-            <div></div>
-            <div></div>
-            <div></div>
         </div>
         <div class="table-wrap recent-scroll">
             <table class="compact-table" id="usersTable">
@@ -146,7 +140,6 @@
     const usersSelectAll = document.getElementById("usersSelectAll");
     const usersFilterDaire = document.getElementById("usersFilterDaire");
     const usersFilterSube = document.getElementById("usersFilterSube");
-    const usersFilterGrid = document.querySelector(".users-filter-grid");
 
     document.querySelectorAll(".row-options-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -183,19 +176,6 @@
         tr.classList.toggle("selected-row", checkbox.checked);
     }
 
-    function syncFilterGridColumns() {
-        if (!usersFilterGrid || !usersTable) return;
-        const headCells = Array.from(usersTable.querySelectorAll("thead tr:first-child th"));
-        if (!headCells.length) return;
-        const widths = headCells.map((th) => Math.round(th.getBoundingClientRect().width));
-        usersFilterGrid.style.gridTemplateColumns = widths.map((w) => `${w}px`).join(" ");
-        const gridParent = usersFilterGrid.parentElement;
-        if (gridParent) {
-            usersFilterGrid.style.width = `${Math.round(usersTable.getBoundingClientRect().width)}px`;
-            const left = usersTable.getBoundingClientRect().left - gridParent.getBoundingClientRect().left;
-            usersFilterGrid.style.marginLeft = `${Math.round(left)}px`;
-        }
-    }
 
     function visibleRows() {
         return Array.from(usersTable.querySelectorAll("tbody tr.selectable-row")).filter((tr) => tr.style.display !== "none");
@@ -272,12 +252,6 @@
 
     refreshFilterOptions();
     applyFilters();
-    syncFilterGridColumns();
-    window.addEventListener("resize", syncFilterGridColumns);
-    const wrap = usersTable.closest(".table-wrap");
-    if (wrap) {
-        wrap.addEventListener("scroll", syncFilterGridColumns);
-    }
 })();
 </script>
 {% endblock %}

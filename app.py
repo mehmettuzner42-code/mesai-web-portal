@@ -881,7 +881,7 @@ def admin_edit_permission(target_user_id: int):
 
     perm = DelegatedAdminPermission.query.filter_by(owner_user_id=founder.id, delegate_user_id=target.id).first()
     if request.method == "POST":
-        allowed_ids = [int(v) for v in request.form.getlist("allowed_user_ids") if str(v).isdigit() and int(v) != founder.id]
+        allowed_ids = [int(v) for v in request.form.getlist("allowed_user_ids") if str(v).isdigit()]
         can_reset_password = request.form.get("can_reset_password") == "1"
         can_view_users_screen = request.form.get("can_view_users_screen") == "1"
         can_view_charts = request.form.get("can_view_charts") == "1"
@@ -911,7 +911,7 @@ def admin_edit_permission(target_user_id: int):
         profiles={p.user_id: p for p in UserProfile.query.all()},
         current_allowed=current_allowed,
         can_reset_password=bool(perm.can_reset_password) if perm else False,
-        can_view_users_screen=bool(perm.can_view_users_screen) if perm else False,
+        can_view_users_screen=bool(perm.can_view_users_screen) if perm else True,
         can_view_charts=bool(perm.can_view_charts) if perm else False,
     )
 
