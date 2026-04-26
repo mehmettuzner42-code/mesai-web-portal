@@ -189,6 +189,12 @@
         if (!headCells.length) return;
         const widths = headCells.map((th) => Math.round(th.getBoundingClientRect().width));
         usersFilterGrid.style.gridTemplateColumns = widths.map((w) => `${w}px`).join(" ");
+        const gridParent = usersFilterGrid.parentElement;
+        if (gridParent) {
+            usersFilterGrid.style.width = `${Math.round(usersTable.getBoundingClientRect().width)}px`;
+            const left = usersTable.getBoundingClientRect().left - gridParent.getBoundingClientRect().left;
+            usersFilterGrid.style.marginLeft = `${Math.round(left)}px`;
+        }
     }
 
     function visibleRows() {
@@ -268,6 +274,10 @@
     applyFilters();
     syncFilterGridColumns();
     window.addEventListener("resize", syncFilterGridColumns);
+    const wrap = usersTable.closest(".table-wrap");
+    if (wrap) {
+        wrap.addEventListener("scroll", syncFilterGridColumns);
+    }
 })();
 </script>
 {% endblock %}

@@ -91,6 +91,12 @@
         if (!headCells.length) return;
         const widths = headCells.map((th) => Math.round(th.getBoundingClientRect().width));
         permFilterGrid.style.gridTemplateColumns = widths.map((w) => `${w}px`).join(" ");
+        const gridParent = permFilterGrid.parentElement;
+        if (gridParent) {
+            permFilterGrid.style.width = `${Math.round(table.getBoundingClientRect().width)}px`;
+            const left = table.getBoundingClientRect().left - gridParent.getBoundingClientRect().left;
+            permFilterGrid.style.marginLeft = `${Math.round(left)}px`;
+        }
     }
 
     function visibleRows() {
@@ -170,6 +176,10 @@
     applyFilters();
     syncFilterGridColumns();
     window.addEventListener("resize", syncFilterGridColumns);
+    const wrap = table.closest(".table-wrap");
+    if (wrap) {
+        wrap.addEventListener("scroll", syncFilterGridColumns);
+    }
 })();
 </script>
 {% endblock %}
