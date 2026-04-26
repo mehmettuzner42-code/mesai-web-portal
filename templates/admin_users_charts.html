@@ -50,6 +50,8 @@
 <div class="card">
     <h3>Yıl Grafiği ({{ selected_year }})</h3>
     <p>Karşılaştırma metriği: sadece %60 mesai saati</p>
+    <p>Pazar Mesaisi Toplamı: <strong>{{ fmt_num(year_total_pazar) }}</strong></p>
+    <p>Bayram Mesaisi Toplamı: <strong>{{ fmt_num(year_total_bayram) }}</strong></p>
     <div class="compare-chart">
         {% for r in rows_year %}
         <div class="compare-row">

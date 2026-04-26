@@ -150,14 +150,14 @@
             dlgTitle.textContent = `Seçenekler - ${btn.dataset.userName || ""}`;
             dlgOpenAs.href = btn.dataset.openUrl || "#";
             dlgResetForm.action = btn.dataset.resetUrl || "#";
-            dlgOpenAs.style.display = (btn.dataset.canOpen === "1") ? "inline-block" : "none";
+            dlgOpenAs.hidden = !(btn.dataset.canOpen === "1");
 
             const canReset = btn.dataset.canReset === "1";
-            dlgResetForm.style.display = canReset ? "block" : "none";
+            dlgResetForm.hidden = !canReset;
 
             if (dlgPermission) {
                 const canPermission = btn.dataset.canPermission === "1";
-                dlgPermission.style.display = canPermission ? "inline-block" : "none";
+                dlgPermission.hidden = !canPermission;
                 dlgPermission.href = btn.dataset.permissionUrl || "#";
             }
 

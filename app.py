@@ -793,6 +793,8 @@ def admin_users_charts():
     rows_year = sorted(rows, key=lambda x: x["year_hours"], reverse=True)
     max_period = max([r["period_hours"] for r in rows_period] + [1.0])
     max_year = max([r["year_hours"] for r in rows_year] + [1.0])
+    year_total_pazar = sum(float(r["year"].get("pazar", 0) or 0) for r in rows_year)
+    year_total_bayram = sum(float(r["year"].get("bayram", 0) or 0) for r in rows_year)
 
     return render_template(
         "admin_users_charts.html",
@@ -807,6 +809,8 @@ def admin_users_charts():
         period_start=p_start,
         period_end=p_end,
         format_dmy=format_dmy,
+        year_total_pazar=year_total_pazar,
+        year_total_bayram=year_total_bayram,
     )
 
 

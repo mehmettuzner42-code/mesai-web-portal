@@ -219,7 +219,13 @@ table form {
 
 .admin-filter-bar .filter-col-daire,
 .admin-filter-bar .filter-col-sube {
-    min-width: 220px;
+    min-width: 300px;
+    flex: 1 1 320px;
+}
+
+.admin-filter-bar .filter-col-daire select,
+.admin-filter-bar .filter-col-sube select {
+    width: 100%;
 }
 
 .permission-section {
