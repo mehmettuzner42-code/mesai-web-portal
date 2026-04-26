@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h2>Yetkili Kullanıcılar</h2>
+    <a class="button-link" href="{{ url_for('admin_users') }}">Tüm Kişilere Dön</a>
+</div>
+
+<div class="card">
+    <div class="table-wrap">
+        <table class="compact-table">
+            <thead>
+                <tr>
+                    <th>E-posta</th>
+                    <th>Görebildiği Kullanıcı Sayısı</th>
+                    <th>Şifre Görme</th>
+                    <th>İşlem</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in delegates %}
+                <tr>
+                    <td>{{ d.user.email }}</td>
+                    <td>{{ d.allowed_count }}</td>
+                    <td>{{ "Evet" if d.perm.can_view_passwords else "Hayır" }}</td>
+                    <td>
+                        <a class="button-link mini" href="{{ url_for('admin_edit_permission', target_user_id=d.user.id) }}">Düzenle</a>
+                        <form method="post" action="{{ url_for('admin_remove_authorized_user', delegate_user_id=d.user.id) }}" style="display:inline;" onsubmit="return confirm('Bu kullanıcının yetkileri kaldırılsın mı?');">
+                            <button type="submit" class="danger">Yetkiyi Kaldır</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4">Henüz yetki verilen kullanıcı yok.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

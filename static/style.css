@@ -228,6 +228,9 @@ table form {
     border-radius: 8px;
     padding: 6px;
     box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
+    display: grid;
+    gap: 6px;
+    min-width: 150px;
 }
 
 .compare-chart {

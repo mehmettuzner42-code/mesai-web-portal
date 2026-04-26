@@ -2,6 +2,9 @@
 {% block content %}
 <div class="header-row">
     <a class="button-link" href="{{ url_for('admin_users_charts') }}">Grafik</a>
+    {% if is_founder %}
+    <a class="button-link" href="{{ url_for('admin_authorized_users') }}">Yetkili Kullanıcılar</a>
+    {% endif %}
 </div>
 
 <div class="card">
@@ -37,6 +40,12 @@
                                 <summary title="Seçenekler">⋯</summary>
                                 <div class="row-menu-panel">
                                     <a class="button-link mini" href="{{ url_for('admin_impersonate', target_user_id=row.user.id) }}">Kullanıcı Olarak Aç</a>
+                                    {% if row.can_view_passwords %}
+                                    <a class="button-link mini" href="{{ url_for('admin_show_password', target_user_id=row.user.id) }}">Şifre Gör</a>
+                                    {% endif %}
+                                    {% if is_founder %}
+                                    <a class="button-link mini" href="{{ url_for('admin_edit_permission', target_user_id=row.user.id) }}">Yetki Ver</a>
+                                    {% endif %}
                                 </div>
                             </details>
                         </td>

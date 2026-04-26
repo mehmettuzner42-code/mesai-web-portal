@@ -106,6 +106,16 @@ class AppSetting(db.Model):
     setting_value = db.Column(db.Text, default="", nullable=False)
 
 
+class DelegatedAdminPermission(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    delegate_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True, index=True)
+    allowed_user_ids_json = db.Column(db.Text, default="[]", nullable=False)
+    can_view_passwords = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 def fmt_num(value: float) -> str:
     if value is None:
         return ""
@@ -315,6 +325,37 @@ def is_founder_user(user: User) -> bool:
     return bool(user and (user.email or "").strip().lower() == FOUNDER_EMAIL)
 
 
+def founder_user_id() -> int:
+    u = User.query.filter_by(email=FOUNDER_EMAIL).first()
+    return int(u.id) if u else 0
+
+
+def get_delegate_permission(user_id: int):
+    fid = founder_user_id()
+    if not fid:
+        return None
+    return DelegatedAdminPermission.query.filter_by(owner_user_id=fid, delegate_user_id=user_id).first()
+
+
+def allowed_user_ids_for(user: User):
+    if not user:
+        return set()
+    if is_founder_user(user):
+        return None  # None => all users
+    perm = get_delegate_permission(user.id)
+    if not perm:
+        return set()
+    try:
+        raw = json.loads(perm.allowed_user_ids_json or "[]")
+        return {int(x) for x in raw if str(x).isdigit()}
+    except Exception:
+        return set()
+
+
+def can_access_admin_area(user: User) -> bool:
+    return bool(is_founder_user(user) or get_delegate_permission(user.id if user else 0))
+
+
 def session_login_user():
     uid = session.get("user_id")
     if not uid:
@@ -327,12 +368,15 @@ def current_user():
     if login_user is None:
         return None
     # Kurucu kullanici "kullaniciya burunme" modunda ise ekrandaki tum veriler secilen kisiye gore akar.
-    if is_founder_user(login_user):
+    if can_access_admin_area(login_user):
         imp_uid = session.get("admin_impersonate_user_id")
         if imp_uid:
             imp_user = User.query.get(imp_uid)
             if imp_user:
-                return imp_user
+                allowed = allowed_user_ids_for(login_user)
+                if allowed is None or imp_user.id in allowed:
+                    return imp_user
+                session.pop("admin_impersonate_user_id", None)
     return login_user
 
 
@@ -352,6 +396,20 @@ def admin_required(view_func):
             return redirect(url_for("login"))
         if not is_founder_user(login_user):
             flash("Bu alan sadece kurucu kullanıcıya açıktır.", "error")
+            return redirect(url_for("dashboard"))
+        return view_func(*args, **kwargs)
+
+    return wrapped
+
+
+def admin_or_delegate_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        login_user = session_login_user()
+        if not login_user:
+            return redirect(url_for("login"))
+        if not can_access_admin_area(login_user):
+            flash("Bu alan sadece yetkili kullanıcılara açıktır.", "error")
             return redirect(url_for("dashboard"))
         return view_func(*args, **kwargs)
 
@@ -455,11 +513,13 @@ def build_recent_ui_items(entries):
 def inject_helpers():
     login_user = session_login_user()
     is_founder = is_founder_user(login_user)
+    is_delegate_admin = bool(login_user and get_delegate_permission(login_user.id))
     is_impersonating = bool(session.get("admin_impersonate_user_id"))
     return {
         "fmt_num": fmt_num,
         "apk_url": app.config.get("APK_URL", "/download-apk"),
         "is_founder": is_founder,
+        "is_delegate_admin": is_delegate_admin,
         "is_impersonating": is_impersonating,
     }
 
@@ -556,11 +616,14 @@ def build_period_options_for_entries(entries):
 
 @app.get("/admin/users")
 @login_required
-@admin_required
+@admin_or_delegate_required
 def admin_users():
     login_user = session_login_user()
+    allowed_ids = allowed_user_ids_for(login_user)
+    delegate_perm = get_delegate_permission(login_user.id) if login_user else None
     # Tum kullanicilari profil ile birlikte listele
-    users = User.query.order_by(User.created_at.desc()).all()
+    users_query = User.query.order_by(User.created_at.desc())
+    users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
     profiles = {p.user_id: p for p in UserProfile.query.all()}
     entry_counts = {
         uid: cnt
@@ -574,6 +637,8 @@ def admin_users():
                 "user": u,
                 "profile": p,
                 "entry_count": int(entry_counts.get(u.id, 0)),
+                "can_manage_permissions": bool(is_founder_user(login_user)),
+                "can_view_passwords": bool(is_founder_user(login_user) or (delegate_perm.can_view_passwords if delegate_perm else False)),
             }
         )
 
@@ -601,9 +666,12 @@ def admin_users():
 
 @app.get("/admin/users/charts")
 @login_required
-@admin_required
+@admin_or_delegate_required
 def admin_users_charts():
-    all_entries = OvertimeEntry.query.order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
+    login_user = session_login_user()
+    allowed_ids = allowed_user_ids_for(login_user)
+    entries_query = OvertimeEntry.query.order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc())
+    all_entries = entries_query.all() if allowed_ids is None else entries_query.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0])).all()
     years, default_year, period_options, default_start = build_period_options_for_entries(all_entries)
     selected_year = request.args.get("year", type=int) or default_year
     selected_period = request.args.get("period", "").strip()
@@ -617,7 +685,8 @@ def admin_users_charts():
             pass
     p_start, p_end = period_for_start(active_start[0], active_start[1])
 
-    users = User.query.order_by(User.email.asc()).all()
+    users_query = User.query.order_by(User.email.asc())
+    users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
     profiles = {p.user_id: p for p in UserProfile.query.all()}
 
     period_agg_rows = (
@@ -700,9 +769,113 @@ def admin_users_charts():
     )
 
 
-@app.get("/admin/impersonate/<int:target_user_id>")
+@app.get("/admin/users/<int:target_user_id>/show-password")
+@login_required
+@admin_or_delegate_required
+def admin_show_password(target_user_id: int):
+    login_user = session_login_user()
+    allowed_ids = allowed_user_ids_for(login_user)
+    if allowed_ids is not None and target_user_id not in allowed_ids:
+        flash("Bu kullanıcı için yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    delegate_perm = get_delegate_permission(login_user.id) if login_user else None
+    can_view = bool(is_founder_user(login_user) or (delegate_perm.can_view_passwords if delegate_perm else False))
+    target = User.query.get(target_user_id)
+    if not target:
+        flash("Kullanıcı bulunamadı.", "error")
+        return redirect(url_for("admin_users"))
+    if not can_view:
+        flash("Şifre görme yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    flash(
+        f"{target.email} için mevcut şifre güvenlik nedeniyle görüntülenemez (hashli saklanır). Gerekirse şifre sıfırlama kullanın.",
+        "error",
+    )
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/permissions/<int:target_user_id>", methods=["GET", "POST"])
 @login_required
 @admin_required
+def admin_edit_permission(target_user_id: int):
+    founder = session_login_user()
+    if not founder:
+        return redirect(url_for("login"))
+    target = User.query.get(target_user_id)
+    if not target:
+        flash("Kullanıcı bulunamadı.", "error")
+        return redirect(url_for("admin_users"))
+    if is_founder_user(target):
+        flash("Kurucu kullanıcı için bu işlem yapılamaz.", "error")
+        return redirect(url_for("admin_users"))
+
+    perm = DelegatedAdminPermission.query.filter_by(owner_user_id=founder.id, delegate_user_id=target.id).first()
+    if request.method == "POST":
+        allowed_ids = [int(v) for v in request.form.getlist("allowed_user_ids") if str(v).isdigit() and int(v) != founder.id]
+        can_view_passwords = request.form.get("can_view_passwords") == "1"
+        if perm is None:
+            perm = DelegatedAdminPermission(owner_user_id=founder.id, delegate_user_id=target.id)
+            db.session.add(perm)
+        perm.allowed_user_ids_json = json.dumps(sorted(set(allowed_ids)))
+        perm.can_view_passwords = can_view_passwords
+        db.session.commit()
+        flash("Yetkiler kaydedildi.", "success")
+        return redirect(url_for("admin_authorized_users"))
+
+    current_allowed = set()
+    if perm:
+        try:
+            current_allowed = {int(x) for x in json.loads(perm.allowed_user_ids_json or "[]") if str(x).isdigit()}
+        except Exception:
+            current_allowed = set()
+    users = User.query.order_by(User.email.asc()).all()
+    return render_template(
+        "admin_permission_edit.html",
+        target=target,
+        users=users,
+        current_allowed=current_allowed,
+        can_view_passwords=bool(perm.can_view_passwords) if perm else False,
+    )
+
+
+@app.get("/admin/authorized-users")
+@login_required
+@admin_required
+def admin_authorized_users():
+    founder = session_login_user()
+    perms = DelegatedAdminPermission.query.filter_by(owner_user_id=founder.id).all()
+    delegates = []
+    for p in perms:
+        u = User.query.get(p.delegate_user_id)
+        if not u:
+            continue
+        try:
+            allowed_count = len({int(x) for x in json.loads(p.allowed_user_ids_json or "[]") if str(x).isdigit()})
+        except Exception:
+            allowed_count = 0
+        delegates.append({"user": u, "perm": p, "allowed_count": allowed_count})
+    delegates.sort(key=lambda x: (x["user"].email or "").lower())
+    return render_template("admin_authorized_users.html", delegates=delegates)
+
+
+@app.post("/admin/authorized-users/<int:delegate_user_id>/remove")
+@login_required
+@admin_required
+def admin_remove_authorized_user(delegate_user_id: int):
+    founder = session_login_user()
+    perm = DelegatedAdminPermission.query.filter_by(owner_user_id=founder.id, delegate_user_id=delegate_user_id).first()
+    if perm:
+        db.session.delete(perm)
+        db.session.commit()
+        flash("Yetki kaldırıldı.", "success")
+    else:
+        flash("Yetki kaydı bulunamadı.", "error")
+    return redirect(url_for("admin_authorized_users"))
+
+
+@app.get("/admin/impersonate/<int:target_user_id>")
+@login_required
+@admin_or_delegate_required
 def admin_impersonate(target_user_id: int):
     target = User.query.get(target_user_id)
     if not target:
@@ -711,6 +884,10 @@ def admin_impersonate(target_user_id: int):
     login_user = session_login_user()
     if not login_user:
         return redirect(url_for("login"))
+    allowed_ids = allowed_user_ids_for(login_user)
+    if allowed_ids is not None and target.id not in allowed_ids:
+        flash("Bu kullanıcıyı açma yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
     session["admin_original_user_id"] = login_user.id
     session["admin_impersonate_user_id"] = target.id
     session["user_id"] = login_user.id
@@ -720,7 +897,7 @@ def admin_impersonate(target_user_id: int):
 
 @app.post("/admin/stop-impersonation")
 @login_required
-@admin_required
+@admin_or_delegate_required
 def admin_stop_impersonation():
     session.pop("admin_impersonate_user_id", None)
     session.pop("admin_original_user_id", None)
@@ -730,7 +907,7 @@ def admin_stop_impersonation():
 
 @app.post("/admin/users/export.xlsx")
 @login_required
-@admin_required
+@admin_or_delegate_required
 def admin_export_selected_users_xlsx():
     selected_ids = [int(v) for v in request.form.getlist("selected_user_ids") if str(v).isdigit()]
     year = request.form.get("year", type=int)
@@ -738,6 +915,13 @@ def admin_export_selected_users_xlsx():
     if not selected_ids:
         flash("Lütfen en az bir kişi seçin.", "error")
         return redirect(url_for("admin_users"))
+    login_user = session_login_user()
+    allowed_ids = allowed_user_ids_for(login_user)
+    if allowed_ids is not None:
+        selected_ids = [uid for uid in selected_ids if uid in allowed_ids]
+        if not selected_ids:
+            flash("Seçtiğiniz kullanıcılar için yetkiniz yok.", "error")
+            return redirect(url_for("admin_users"))
     if not year or "-" not in period:
         flash("Yıl/dönem bilgisi eksik.", "error")
         return redirect(url_for("admin_users"))
@@ -751,7 +935,6 @@ def admin_export_selected_users_xlsx():
     profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_(selected_ids)).all()}
     p_start, p_end = period_for_start(sy, sm)
 
-    login_user = session_login_user()
     sig_prefix = f"bulk_excel_sign_{login_user.id if login_user else 0}"
     chef_title = request.form.get("chef_title", "").strip()
     chef_name = request.form.get("chef_name", "").strip()

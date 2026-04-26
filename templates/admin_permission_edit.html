@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h2>Yetki Düzenle: {{ target.email }}</h2>
+    <a class="button-link" href="{{ url_for('admin_authorized_users') }}">Yetkili Kullanıcılara Dön</a>
+</div>
+
+<div class="card">
+    <form method="post" class="grid">
+        <label>
+            <input type="checkbox" name="can_view_passwords" value="1" {% if can_view_passwords %}checked{% endif %}>
+            Şifre Gör yetkisi
+        </label>
+
+        <h3>Görebileceği Kullanıcılar</h3>
+        <div class="table-wrap recent-scroll">
+            <table class="compact-table">
+                <thead>
+                    <tr>
+                        <th>Seç</th>
+                        <th>E-posta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    {% if u.id != target.id %}
+                    <tr>
+                        <td><input type="checkbox" name="allowed_user_ids" value="{{ u.id }}" {% if u.id in current_allowed %}checked{% endif %}></td>
+                        <td>{{ u.email }}</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <button type="submit">Yetkileri Kaydet</button>
+    </form>
+</div>
+{% endblock %}
