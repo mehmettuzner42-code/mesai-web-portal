@@ -12,7 +12,7 @@
             <strong>Mesai Portal</strong>
             {% if session.get('user_id') %}
             <nav>
-                {% if is_founder or is_delegate_admin %}
+                {% if is_founder or (is_delegate_admin and can_view_users_screen) %}
                 <a href="{{ url_for('admin_users') }}">Tüm Kişiler</a>
                 {% endif %}
                 <a href="{{ url_for('dashboard') }}">Mesai Girişi</a>

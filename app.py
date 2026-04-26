@@ -111,7 +111,9 @@ class DelegatedAdminPermission(db.Model):
     owner_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     delegate_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, unique=True, index=True)
     allowed_user_ids_json = db.Column(db.Text, default="[]", nullable=False)
-    can_view_passwords = db.Column(db.Boolean, default=False, nullable=False)
+    can_reset_password = db.Column(db.Boolean, default=False, nullable=False)
+    can_view_users_screen = db.Column(db.Boolean, default=True, nullable=False)
+    can_view_charts = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -356,6 +358,25 @@ def can_access_admin_area(user: User) -> bool:
     return bool(is_founder_user(user) or get_delegate_permission(user.id if user else 0))
 
 
+def delegate_can(user: User, capability: str) -> bool:
+    if not user:
+        return False
+    if is_founder_user(user):
+        return True
+    perm = get_delegate_permission(user.id)
+    if not perm:
+        return False
+    if capability == "users":
+        return bool(perm.can_view_users_screen)
+    if capability == "charts":
+        return bool(perm.can_view_charts)
+    if capability == "reset_password":
+        return bool(perm.can_reset_password)
+    if capability == "impersonate":
+        return bool(perm.can_view_users_screen)
+    return False
+
+
 def session_login_user():
     uid = session.get("user_id")
     if not uid:
@@ -520,6 +541,8 @@ def inject_helpers():
         "apk_url": app.config.get("APK_URL", "/download-apk"),
         "is_founder": is_founder,
         "is_delegate_admin": is_delegate_admin,
+        "can_view_users_screen": delegate_can(login_user, "users"),
+        "can_view_charts": delegate_can(login_user, "charts"),
         "is_impersonating": is_impersonating,
     }
 
@@ -619,6 +642,9 @@ def build_period_options_for_entries(entries):
 @admin_or_delegate_required
 def admin_users():
     login_user = session_login_user()
+    if not delegate_can(login_user, "users"):
+        flash("Kullanıcılar ekranını görme yetkiniz yok.", "error")
+        return redirect(url_for("dashboard"))
     allowed_ids = allowed_user_ids_for(login_user)
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
     # Tum kullanicilari profil ile birlikte listele
@@ -638,7 +664,8 @@ def admin_users():
                 "profile": p,
                 "entry_count": int(entry_counts.get(u.id, 0)),
                 "can_manage_permissions": bool(is_founder_user(login_user)),
-                "can_view_passwords": bool(is_founder_user(login_user) or (delegate_perm.can_view_passwords if delegate_perm else False)),
+                "can_reset_password": bool(is_founder_user(login_user) or (delegate_perm.can_reset_password if delegate_perm else False)),
+                "can_open_user": bool(delegate_can(login_user, "impersonate")),
             }
         )
 
@@ -669,6 +696,9 @@ def admin_users():
 @admin_or_delegate_required
 def admin_users_charts():
     login_user = session_login_user()
+    if not delegate_can(login_user, "charts"):
+        flash("Grafik ekranını görme yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
     allowed_ids = allowed_user_ids_for(login_user)
     entries_query = OvertimeEntry.query.order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc())
     all_entries = entries_query.all() if allowed_ids is None else entries_query.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0])).all()
@@ -779,7 +809,7 @@ def admin_show_password(target_user_id: int):
         flash("Bu kullanıcı için yetkiniz yok.", "error")
         return redirect(url_for("admin_users"))
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
-    can_view = bool(is_founder_user(login_user) or (delegate_perm.can_view_passwords if delegate_perm else False))
+    can_view = bool(is_founder_user(login_user) or (delegate_perm.can_reset_password if delegate_perm else False))
     target = User.query.get(target_user_id)
     if not target:
         flash("Kullanıcı bulunamadı.", "error")
@@ -804,7 +834,7 @@ def admin_reset_password(target_user_id: int):
         flash("Bu kullanıcı için yetkiniz yok.", "error")
         return redirect(url_for("admin_users"))
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
-    can_reset = bool(is_founder_user(login_user) or (delegate_perm.can_view_passwords if delegate_perm else False))
+    can_reset = bool(is_founder_user(login_user) or (delegate_perm.can_reset_password if delegate_perm else False))
     if not can_reset:
         flash("Şifre sıfırlama yetkiniz yok.", "error")
         return redirect(url_for("admin_users"))
@@ -843,12 +873,16 @@ def admin_edit_permission(target_user_id: int):
     perm = DelegatedAdminPermission.query.filter_by(owner_user_id=founder.id, delegate_user_id=target.id).first()
     if request.method == "POST":
         allowed_ids = [int(v) for v in request.form.getlist("allowed_user_ids") if str(v).isdigit() and int(v) != founder.id]
-        can_view_passwords = request.form.get("can_view_passwords") == "1"
+        can_reset_password = request.form.get("can_reset_password") == "1"
+        can_view_users_screen = request.form.get("can_view_users_screen") == "1"
+        can_view_charts = request.form.get("can_view_charts") == "1"
         if perm is None:
             perm = DelegatedAdminPermission(owner_user_id=founder.id, delegate_user_id=target.id)
             db.session.add(perm)
         perm.allowed_user_ids_json = json.dumps(sorted(set(allowed_ids)))
-        perm.can_view_passwords = can_view_passwords
+        perm.can_reset_password = can_reset_password
+        perm.can_view_users_screen = can_view_users_screen
+        perm.can_view_charts = can_view_charts
         db.session.commit()
         flash("Yetkiler kaydedildi.", "success")
         return redirect(url_for("admin_authorized_users"))
@@ -864,8 +898,11 @@ def admin_edit_permission(target_user_id: int):
         "admin_permission_edit.html",
         target=target,
         users=users,
+        profiles={p.user_id: p for p in UserProfile.query.all()},
         current_allowed=current_allowed,
-        can_view_passwords=bool(perm.can_view_passwords) if perm else False,
+        can_reset_password=bool(perm.can_reset_password) if perm else False,
+        can_view_users_screen=bool(perm.can_view_users_screen) if perm else False,
+        can_view_charts=bool(perm.can_view_charts) if perm else False,
     )
 
 
@@ -915,6 +952,9 @@ def admin_impersonate(target_user_id: int):
     login_user = session_login_user()
     if not login_user:
         return redirect(url_for("login"))
+    if not delegate_can(login_user, "impersonate"):
+        flash("Kullanıcı ekranı görme yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
     allowed_ids = allowed_user_ids_for(login_user)
     if allowed_ids is not None and target.id not in allowed_ids:
         flash("Bu kullanıcıyı açma yetkiniz yok.", "error")
@@ -1902,6 +1942,30 @@ def sync_usernames_with_emails() -> int:
     return changed
 
 
+def ensure_delegated_permission_columns():
+    inspector = db.inspect(db.engine)
+    try:
+        cols = {c["name"] for c in inspector.get_columns("delegated_admin_permission")}
+    except Exception:
+        return
+    if "can_reset_password" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_reset_password BOOLEAN NOT NULL DEFAULT 0"))
+    if "can_view_users_screen" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_users_screen BOOLEAN NOT NULL DEFAULT 1"))
+    if "can_view_charts" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_charts BOOLEAN NOT NULL DEFAULT 0"))
+    # eski kolon varsa yeni yapıya taşımak için bir kez eşitle
+    if "can_view_passwords" in cols:
+        db.session.execute(
+            db.text(
+                "UPDATE delegated_admin_permission "
+                "SET can_reset_password = CASE WHEN can_view_passwords IS NULL THEN can_reset_password ELSE can_view_passwords END "
+                "WHERE can_reset_password = 0"
+            )
+        )
+    db.session.commit()
+
+
 @app.cli.command("sync-usernames")
 def sync_usernames_cmd():
     changed = sync_usernames_with_emails()
@@ -1911,6 +1975,7 @@ def sync_usernames_cmd():
 with app.app_context():
     db.create_all()
     try:
+        ensure_delegated_permission_columns()
         sync_usernames_with_emails()
     except Exception:
         db.session.rollback()

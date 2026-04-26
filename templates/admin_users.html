@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="header-row">
+    {% if is_founder or can_view_charts %}
     <a class="button-link" href="{{ url_for('admin_users_charts') }}">Grafik</a>
+    {% endif %}
     {% if is_founder %}
     <a class="button-link" href="{{ url_for('admin_authorized_users') }}">Yetkili Kullanıcılar</a>
     {% endif %}
@@ -41,7 +43,8 @@
                                 data-user-name="{{ row.profile.ad_soyad or '-' }}"
                                 data-open-url="{{ url_for('admin_impersonate', target_user_id=row.user.id) }}"
                                 data-reset-url="{{ url_for('admin_reset_password', target_user_id=row.user.id) }}"
-                                data-can-reset="{{ '1' if row.can_view_passwords else '0' }}"
+                                data-can-open="{{ '1' if row.can_open_user else '0' }}"
+                                data-can-reset="{{ '1' if row.can_reset_password else '0' }}"
                                 data-can-permission="{{ '1' if is_founder else '0' }}"
                                 data-permission-url="{{ url_for('admin_edit_permission', target_user_id=row.user.id) }}"
                             >⋯</button>
@@ -103,10 +106,10 @@
     <h3 id="rowOptionsTitle">Seçenekler</h3>
     <div class="row-options-actions">
         <a id="dlgOpenAs" class="button-link mini" href="#">Kullanıcı Olarak Aç</a>
+        <a id="dlgPermission" class="button-link mini" href="#">Yetki Ver</a>
         <form id="dlgResetForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı için geçici şifre oluşturulsun mu?');">
             <button type="submit">Şifre Sıfırla</button>
         </form>
-        <a id="dlgPermission" class="button-link mini" href="#">Yetki Ver</a>
     </div>
     <div class="row-options-footer">
         <button type="button" id="dlgCloseBtn">Kapat</button>
@@ -127,6 +130,7 @@
             dlgTitle.textContent = `Seçenekler - ${btn.dataset.userName || ""}`;
             dlgOpenAs.href = btn.dataset.openUrl || "#";
             dlgResetForm.action = btn.dataset.resetUrl || "#";
+            dlgOpenAs.style.display = (btn.dataset.canOpen === "1") ? "inline-block" : "none";
 
             const canReset = btn.dataset.canReset === "1";
             dlgResetForm.style.display = canReset ? "block" : "none";

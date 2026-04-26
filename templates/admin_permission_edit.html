@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="header-row">
-    <h2>Yetki Düzenle: {{ target.email }}</h2>
+    <h2>Yetki Düzenle: {{ (profiles.get(target.id).ad_soyad if profiles.get(target.id) and profiles.get(target.id).ad_soyad else "-") }}</h2>
     <a class="button-link" href="{{ url_for('admin_authorized_users') }}">Yetkili Kullanıcılara Dön</a>
 </div>
 
 <div class="card">
     <form method="post" class="grid">
-        <label>
-            <input type="checkbox" name="can_view_passwords" value="1" {% if can_view_passwords %}checked{% endif %}>
-            Şifre Gör yetkisi
-        </label>
+        <h3>Yetkiler</h3>
+        <label><input type="checkbox" name="can_reset_password" value="1" {% if can_reset_password %}checked{% endif %}> Şifre Sıfırlama</label>
+        <label><input type="checkbox" name="can_view_users_screen" value="1" {% if can_view_users_screen %}checked{% endif %}> Kullanıcı Ekranı Görme</label>
+        <label><input type="checkbox" name="can_view_charts" value="1" {% if can_view_charts %}checked{% endif %}> Grafik Ekranı Görme</label>
 
         <h3>Görebileceği Kullanıcılar</h3>
         <div class="table-wrap recent-scroll">
@@ -18,14 +18,25 @@
                 <thead>
                     <tr>
                         <th>Seç</th>
+                        <th>Sicil No</th>
+                        <th>Ad Soyad</th>
+                        <th>Daire Başkanlığı</th>
+                        <th>Şube Müdürlüğü</th>
+                        <th>Ekip Kodu</th>
                         <th>E-posta</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for u in users %}
                     {% if u.id != target.id %}
+                    {% set p = profiles.get(u.id) %}
                     <tr>
                         <td><input type="checkbox" name="allowed_user_ids" value="{{ u.id }}" {% if u.id in current_allowed %}checked{% endif %}></td>
+                        <td>{{ (p.sicil_no if p else "") or "-" }}</td>
+                        <td>{{ (p.ad_soyad if p else "") or "-" }}</td>
+                        <td>{{ (p.daire_baskanligi if p else "") or "-" }}</td>
+                        <td>{{ (p.sube_mudurlugu if p else "") or "-" }}</td>
+                        <td>{{ (p.ekip_kodu if p else "") or "-" }}</td>
                         <td>{{ u.email }}</td>
                     </tr>
                     {% endif %}
