@@ -58,6 +58,7 @@ app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MAX_UPLOAD_MB", "5")) * 1
 db = SQLAlchemy(app)
 token_serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
 _RATE_LIMIT_STATE = {}
+FOUNDER_EMAIL = "mehmettuzner42@gmail.com"
 
 
 @app.get("/healthz")
@@ -304,11 +305,29 @@ def login_required(view_func):
     return wrapped
 
 
-def current_user():
+def is_founder_user(user: User) -> bool:
+    return bool(user and (user.email or "").strip().lower() == FOUNDER_EMAIL)
+
+
+def session_login_user():
     uid = session.get("user_id")
     if not uid:
         return None
     return User.query.get(uid)
+
+
+def current_user():
+    login_user = session_login_user()
+    if login_user is None:
+        return None
+    # Kurucu kullanici "kullaniciya burunme" modunda ise ekrandaki tum veriler secilen kisiye gore akar.
+    if is_founder_user(login_user):
+        imp_uid = session.get("admin_impersonate_user_id")
+        if imp_uid:
+            imp_user = User.query.get(imp_uid)
+            if imp_user:
+                return imp_user
+    return login_user
 
 
 def ensure_user_or_redirect():
@@ -317,6 +336,20 @@ def ensure_user_or_redirect():
         session.clear()
         return None
     return user
+
+
+def admin_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        login_user = session_login_user()
+        if not login_user:
+            return redirect(url_for("login"))
+        if not is_founder_user(login_user):
+            flash("Bu alan sadece kurucu kullanıcıya açıktır.", "error")
+            return redirect(url_for("dashboard"))
+        return view_func(*args, **kwargs)
+
+    return wrapped
 
 
 def get_or_create_profile(user_id: int):
@@ -400,7 +433,15 @@ def build_recent_ui_items(entries):
 
 @app.context_processor
 def inject_helpers():
-    return {"fmt_num": fmt_num, "apk_url": app.config.get("APK_URL", "/download-apk")}
+    login_user = session_login_user()
+    is_founder = is_founder_user(login_user)
+    is_impersonating = bool(session.get("admin_impersonate_user_id"))
+    return {
+        "fmt_num": fmt_num,
+        "apk_url": app.config.get("APK_URL", "/download-apk"),
+        "is_founder": is_founder,
+        "is_impersonating": is_impersonating,
+    }
 
 
 @app.after_request
@@ -480,6 +521,144 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+def build_period_options_for_entries(entries):
+    start_options = sorted({(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) for e in entries}, reverse=True)
+    if not start_options:
+        ps = period_start_for_date(date.today())
+        start_options = [(ps.year, ps.month)]
+    years = sorted({period_year(y, m) for (y, m) in start_options}, reverse=True)
+    selected_year = years[0]
+    period_options = [(y, m) for (y, m) in start_options if period_year(y, m) == selected_year] or [start_options[0]]
+    return years, selected_year, period_options, start_options[0]
+
+
+@app.get("/admin/users")
+@login_required
+@admin_required
+def admin_users():
+    login_user = session_login_user()
+    # Tum kullanicilari profil ile birlikte listele
+    users = User.query.order_by(User.created_at.desc()).all()
+    profiles = {p.user_id: p for p in UserProfile.query.all()}
+    entry_counts = {
+        uid: cnt
+        for uid, cnt in db.session.query(OvertimeEntry.user_id, db.func.count(OvertimeEntry.id)).group_by(OvertimeEntry.user_id).all()
+    }
+    rows = []
+    for u in users:
+        p = profiles.get(u.id) or UserProfile(user_id=u.id)
+        rows.append(
+            {
+                "user": u,
+                "profile": p,
+                "entry_count": int(entry_counts.get(u.id, 0)),
+            }
+        )
+
+    founder_entries = OvertimeEntry.query.filter_by(user_id=login_user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
+    years, selected_year, period_options, active_start = build_period_options_for_entries(founder_entries)
+    return render_template(
+        "admin_users.html",
+        rows=rows,
+        years=years,
+        selected_year=selected_year,
+        period_options=period_options,
+        period_value=f"{active_start[0]:04d}-{active_start[1]:02d}",
+    )
+
+
+@app.get("/admin/impersonate/<int:target_user_id>")
+@login_required
+@admin_required
+def admin_impersonate(target_user_id: int):
+    target = User.query.get(target_user_id)
+    if not target:
+        flash("Kullanıcı bulunamadı.", "error")
+        return redirect(url_for("admin_users"))
+    login_user = session_login_user()
+    if not login_user:
+        return redirect(url_for("login"))
+    session["admin_original_user_id"] = login_user.id
+    session["admin_impersonate_user_id"] = target.id
+    session["user_id"] = login_user.id
+    flash(f"{target.email} kullanıcısı olarak görüntüleme açıldı.", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.post("/admin/stop-impersonation")
+@login_required
+@admin_required
+def admin_stop_impersonation():
+    session.pop("admin_impersonate_user_id", None)
+    session.pop("admin_original_user_id", None)
+    flash("Kurucu kullanıcı görünümüne geri dönüldü.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.post("/admin/users/export.xlsx")
+@login_required
+@admin_required
+def admin_export_selected_users_xlsx():
+    selected_ids = [int(v) for v in request.form.getlist("selected_user_ids") if str(v).isdigit()]
+    year = request.form.get("year", type=int)
+    period = request.form.get("period", "").strip()
+    if not selected_ids:
+        flash("Lütfen en az bir kişi seçin.", "error")
+        return redirect(url_for("admin_users"))
+    if not year or "-" not in period:
+        flash("Yıl/dönem bilgisi eksik.", "error")
+        return redirect(url_for("admin_users"))
+    try:
+        sy, sm = (int(x) for x in period.split("-"))
+    except Exception:
+        flash("Dönem formatı hatalı.", "error")
+        return redirect(url_for("admin_users"))
+
+    users = User.query.filter(User.id.in_(selected_ids)).order_by(User.email.asc()).all()
+    profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_(selected_ids)).all()}
+    p_start, p_end = period_for_start(sy, sm)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Toplu Rapor"
+    ws.append(["Kullanıcı E-posta", "Ad Soyad", "Sicil No", "Ekip Kodu", "Tarih", "Gün", "Başlama", "Bitiş", "%60", "%15", "Pazar", "Bayram", "Açıklama"])
+    for u in users:
+        p = profiles.get(u.id) or UserProfile(user_id=u.id)
+        _, _, rows = report_period_rows_for_export(u.id, sy, sm)
+        if not rows:
+            ws.append([u.email, p.ad_soyad, p.sicil_no, p.ekip_kodu, "", "", "", "", "", "", "", "", ""])
+            continue
+        for r in rows:
+            ws.append(
+                [
+                    u.email,
+                    p.ad_soyad,
+                    p.sicil_no,
+                    p.ekip_kodu,
+                    format_dmy(r["work_date"]),
+                    weekday_tr(r["work_date"]),
+                    r["start_time"],
+                    r["end_time"],
+                    fmt_num(r["pct60"]),
+                    fmt_num(r["pct15"]),
+                    fmt_num(r["pazar"]),
+                    fmt_num(r["bayram"]),
+                    r["description"],
+                ]
+            )
+        ws.append(["", "", "", "", "", "", "", "", "", "", "", "", ""])
+
+    mem = io.BytesIO()
+    wb.save(mem)
+    mem.seek(0)
+    return send_file(
+        mem,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"Toplu_Mesai_{year}_{sm:02d}_{format_dmy(p_start)}_{format_dmy(p_end)}.xlsx",
+    )
 
 
 @app.route("/settings", methods=["GET", "POST"])

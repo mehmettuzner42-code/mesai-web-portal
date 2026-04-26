@@ -44,6 +44,17 @@ body {
     gap: 8px;
 }
 
+.topbar nav form {
+    margin: 0;
+}
+
+.topbar nav form button {
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    background: #0f766e;
+}
+
 .card {
     background: #ffffff;
     border-radius: 10px;
@@ -174,6 +185,42 @@ table form {
     align-items: center;
     justify-content: space-between;
     margin-top: 16px;
+}
+
+.admin-export-bar {
+    margin-top: 12px;
+    display: flex;
+    gap: 10px;
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.row-menu {
+    position: relative;
+}
+
+.row-menu summary {
+    list-style: none;
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+    user-select: none;
+}
+
+.row-menu summary::-webkit-details-marker {
+    display: none;
+}
+
+.row-menu-panel {
+    position: absolute;
+    right: 0;
+    top: 22px;
+    z-index: 30;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 6px;
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
 }
 
 .table-wrap {

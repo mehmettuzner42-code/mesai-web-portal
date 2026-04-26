@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h2>Tüm Kişiler</h2>
+</div>
+
+<div class="card">
+    <h3>Kullanıcı Listesi</h3>
+    <form method="post" action="{{ url_for('admin_export_selected_users_xlsx') }}">
+        <div class="table-wrap recent-scroll">
+            <table class="compact-table">
+                <thead>
+                    <tr>
+                        <th>Seç</th>
+                        <th>E-posta</th>
+                        <th>Daire Başkanlığı</th>
+                        <th>Şube Müdürlüğü</th>
+                        <th>Ad Soyad</th>
+                        <th>Sicil No</th>
+                        <th>Ekip Kodu</th>
+                        <th>Kayıt Sayısı</th>
+                        <th>Seçenekler</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        <td><input type="checkbox" name="selected_user_ids" value="{{ row.user.id }}"></td>
+                        <td>{{ row.user.email }}</td>
+                        <td>{{ row.profile.daire_baskanligi or "-" }}</td>
+                        <td>{{ row.profile.sube_mudurlugu or "-" }}</td>
+                        <td>{{ row.profile.ad_soyad or "-" }}</td>
+                        <td>{{ row.profile.sicil_no or "-" }}</td>
+                        <td>{{ row.profile.ekip_kodu or "-" }}</td>
+                        <td>{{ row.entry_count }}</td>
+                        <td>
+                            <details class="row-menu">
+                                <summary title="Seçenekler">⋯</summary>
+                                <div class="row-menu-panel">
+                                    <a class="button-link mini" href="{{ url_for('admin_impersonate', target_user_id=row.user.id) }}">Kullanıcı Olarak Aç</a>
+                                </div>
+                            </details>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9">Henüz kullanıcı yok.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="admin-export-bar">
+            <label>Yıl
+                <select name="year">
+                    {% for y in years %}
+                    <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Dönem
+                <select name="period">
+                    {% for sy, sm in period_options %}
+                    {% set em = 1 if sm == 12 else sm + 1 %}
+                    <option value="{{ sy }}-{{ '%02d'|format(sm) }}" {% if period_value == (sy ~ '-' ~ ('%02d'|format(sm))) %}selected{% endif %}>
+                        {{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][sm-1] }}/{{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][em-1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button type="submit">Toplu Excel Raporu</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
