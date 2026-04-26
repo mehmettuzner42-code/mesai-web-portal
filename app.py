@@ -1981,15 +1981,6 @@ def ensure_delegated_permission_columns():
                 "WHERE can_view_passwords IS NULL"
             )
         )
-    # Eski kayitlarda kullanici ekrani yetkisi kapali kaldiysa ac.
-    if "can_view_users_screen" in cols:
-        db.session.execute(
-            db.text(
-                "UPDATE delegated_admin_permission "
-                "SET can_view_users_screen = TRUE "
-                "WHERE can_view_users_screen = FALSE"
-            )
-        )
     db.session.commit()
 
 

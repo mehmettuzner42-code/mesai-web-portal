@@ -118,7 +118,9 @@
     <h3 id="rowOptionsTitle">Seçenekler</h3>
     <div class="row-options-actions">
         <a id="dlgOpenAs" class="button-link mini" href="#">Kullanıcı Olarak Aç</a>
+        {% if is_founder %}
         <a id="dlgPermission" class="button-link mini" href="#">Yetki Ver</a>
+        {% endif %}
         <form id="dlgResetForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı için geçici şifre oluşturulsun mu?');">
             <button type="submit">Şifre Sıfırla</button>
         </form>
@@ -151,9 +153,11 @@
             const canReset = btn.dataset.canReset === "1";
             dlgResetForm.style.display = canReset ? "block" : "none";
 
-            const canPermission = btn.dataset.canPermission === "1";
-            dlgPermission.style.display = canPermission ? "inline-block" : "none";
-            dlgPermission.href = btn.dataset.permissionUrl || "#";
+            if (dlgPermission) {
+                const canPermission = btn.dataset.canPermission === "1";
+                dlgPermission.style.display = canPermission ? "inline-block" : "none";
+                dlgPermission.href = btn.dataset.permissionUrl || "#";
+            }
 
             dlg.showModal();
         });
