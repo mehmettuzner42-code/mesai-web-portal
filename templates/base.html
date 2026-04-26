@@ -9,7 +9,10 @@
 <body>
     <header class="topbar">
         <div class="container">
-            <strong>Mesai Portal</strong>
+            <div class="brand-line">
+                <strong>Mesai Portal</strong>
+                <span class="brand-sub">Developed by Mehmet Tüzner</span>
+            </div>
             {% if session.get('user_id') %}
             <nav>
                 {% if is_founder or is_delegate_admin %}

@@ -686,12 +686,15 @@ def admin_users():
     founder_entries = OvertimeEntry.query.filter_by(user_id=login_user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
     years, selected_year, period_options, active_start = build_period_options_for_entries(founder_entries)
     sig_prefix = f"bulk_excel_sign_{login_user.id}"
+    default_title = "" if not is_founder_user(login_user) else "Ambarlar Şefi"
+    default_manager_title = "" if not is_founder_user(login_user) else "Ambarlar Şube Müdürü"
+    default_director_title = "" if not is_founder_user(login_user) else "Daire Başkanı"
     sign_fields = {
-        "chef_title": get_setting_value(f"{sig_prefix}_chef_title", "Ambarlar Şefi"),
+        "chef_title": get_setting_value(f"{sig_prefix}_chef_title", default_title),
         "chef_name": get_setting_value(f"{sig_prefix}_chef_name", ""),
-        "manager_title": get_setting_value(f"{sig_prefix}_manager_title", "Ambarlar Şube Müdürü"),
+        "manager_title": get_setting_value(f"{sig_prefix}_manager_title", default_manager_title),
         "manager_name": get_setting_value(f"{sig_prefix}_manager_name", ""),
-        "director_title": get_setting_value(f"{sig_prefix}_director_title", "Daire Başkanı"),
+        "director_title": get_setting_value(f"{sig_prefix}_director_title", default_director_title),
         "director_name": get_setting_value(f"{sig_prefix}_director_name", ""),
     }
     return render_template(
