@@ -33,12 +33,12 @@
                     <tr>
                         <th><input type="checkbox" id="usersSelectAll" title="Tümünü Seç"></th>
                         <th>Sıra</th>
-                        <th>Sicil No</th>
-                        <th>Ad Soyad</th>
-                        <th>Daire Başkanlığı</th>
-                        <th>Şube Müdürlüğü</th>
-                        <th>Ekip Kodu</th>
-                        <th>E-posta</th>
+                        <th class="sortable" data-sort-key="2" data-sort-type="text">Sicil No</th>
+                        <th class="sortable" data-sort-key="3" data-sort-type="text">Ad Soyad</th>
+                        <th class="sortable" data-sort-key="4" data-sort-type="text">Daire Başkanlığı</th>
+                        <th class="sortable" data-sort-key="5" data-sort-type="text">Şube Müdürlüğü</th>
+                        <th class="sortable" data-sort-key="6" data-sort-type="text">Ekip Kodu</th>
+                        <th class="sortable" data-sort-key="7" data-sort-type="text">E-posta</th>
                         <th>Seçenekler</th>
                     </tr>
                 </thead>
@@ -158,6 +158,9 @@
     const usersSelectAll = document.getElementById("usersSelectAll");
     const usersFilterDaire = document.getElementById("usersFilterDaire");
     const usersFilterSube = document.getElementById("usersFilterSube");
+    const sortableHeaders = Array.from(usersTable.querySelectorAll("thead th.sortable"));
+    const sortStorageKey = `adminUsersSort:${String({{ session.get('user_id') or 0 }})}`;
+    const sortState = { key: null, dir: "asc" };
     if (!usersTable || !usersSelectAll) return;
 
     document.querySelectorAll(".row-options-btn").forEach((btn) => {
@@ -275,8 +278,87 @@
         syncSelectAll();
     }
 
+    function readCellText(tr, key) {
+        const cell = tr.querySelector(`td:nth-child(${key + 1})`);
+        return (cell?.textContent || "").trim();
+    }
+
+    function updateSortIndicators() {
+        sortableHeaders.forEach((th) => {
+            const baseLabel = (th.dataset.label || th.textContent || "").trim();
+            th.dataset.label = baseLabel;
+            th.style.cursor = "pointer";
+            if (String(sortState.key) !== String(th.dataset.sortKey)) {
+                th.textContent = baseLabel;
+            } else {
+                th.textContent = `${baseLabel} ${sortState.dir === "asc" ? "▲" : "▼"}`;
+            }
+        });
+    }
+
+    function persistSortState() {
+        if (!sortState.key) {
+            localStorage.removeItem(sortStorageKey);
+            return;
+        }
+        localStorage.setItem(sortStorageKey, JSON.stringify(sortState));
+    }
+
+    function sortRowsByState() {
+        if (!sortState.key) return;
+        const tbody = usersTable.querySelector("tbody");
+        if (!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll("tr.selectable-row"));
+        rows.sort((a, b) => {
+            const av = readCellText(a, Number(sortState.key));
+            const bv = readCellText(b, Number(sortState.key));
+            const cmp = av.localeCompare(bv, "tr", { numeric: true, sensitivity: "base" });
+            return sortState.dir === "asc" ? cmp : -cmp;
+        });
+        rows.forEach((tr) => tbody.appendChild(tr));
+        refreshOrderNumbers();
+    }
+
+    function applySort(key, dir) {
+        sortState.key = String(key);
+        sortState.dir = dir === "desc" ? "desc" : "asc";
+        sortRowsByState();
+        updateSortIndicators();
+        persistSortState();
+    }
+
+    function restoreSortState() {
+        try {
+            const raw = localStorage.getItem(sortStorageKey);
+            if (!raw) {
+                updateSortIndicators();
+                return;
+            }
+            const parsed = JSON.parse(raw);
+            if (!parsed || !parsed.key) {
+                updateSortIndicators();
+                return;
+            }
+            applySort(parsed.key, parsed.dir || "asc");
+        } catch (_e) {
+            updateSortIndicators();
+        }
+    }
+
     if (usersFilterDaire) usersFilterDaire.addEventListener("change", applyFilters);
     if (usersFilterSube) usersFilterSube.addEventListener("change", applyFilters);
+    sortableHeaders.forEach((th) => {
+        th.addEventListener("click", () => {
+            const key = th.dataset.sortKey;
+            if (!key) return;
+            const nextDir =
+                String(sortState.key) === String(key) && sortState.dir === "asc"
+                    ? "desc"
+                    : "asc";
+            applySort(key, nextDir);
+            applyFilters();
+        });
+    });
     usersSelectAll.addEventListener("change", () => {
         visibleRows().forEach((tr) => {
             const cb = tr.querySelector("input.row-select");
@@ -295,6 +377,7 @@
     });
 
     refreshFilterOptions();
+    restoreSortState();
     applyFilters();
     refreshOrderNumbers();
 })();
