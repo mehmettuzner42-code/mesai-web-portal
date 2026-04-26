@@ -117,6 +117,7 @@ class DelegatedAdminPermission(db.Model):
     can_reset_password = db.Column(db.Boolean, default=False, nullable=False)
     can_view_users_screen = db.Column(db.Boolean, default=False, nullable=False)
     can_view_charts = db.Column(db.Boolean, default=False, nullable=False)
+    can_view_filters = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -379,6 +380,8 @@ def delegate_can(user: User, capability: str) -> bool:
         return bool(perm.can_view_users_screen)
     if capability == "charts":
         return bool(perm.can_view_charts)
+    if capability == "filters":
+        return bool(perm.can_view_filters)
     if capability == "reset_password":
         return bool(perm.can_reset_password)
     if capability == "impersonate":
@@ -552,6 +555,7 @@ def inject_helpers():
         "is_delegate_admin": is_delegate_admin,
         "can_view_users_screen": delegate_can(login_user, "users"),
         "can_view_charts": delegate_can(login_user, "charts"),
+        "can_view_filters": delegate_can(login_user, "filters"),
         "is_impersonating": is_impersonating,
     }
 
@@ -653,6 +657,7 @@ def admin_users():
     login_user = session_login_user()
     can_users_screen = delegate_can(login_user, "users")
     can_charts_screen = delegate_can(login_user, "charts")
+    can_filters = delegate_can(login_user, "filters")
     allowed_ids = allowed_user_ids_for(login_user)
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
     can_impersonate = delegate_can(login_user, "impersonate")
@@ -694,6 +699,7 @@ def admin_users():
         rows=rows,
         can_users_screen=can_users_screen,
         can_charts_screen=can_charts_screen,
+        can_filters=can_filters,
         years=years,
         selected_year=selected_year,
         period_options=period_options,
@@ -899,6 +905,7 @@ def admin_edit_permission(target_user_id: int):
         can_reset_password = request.form.get("can_reset_password") == "1"
         can_view_users_screen = request.form.get("can_view_users_screen") == "1"
         can_view_charts = request.form.get("can_view_charts") == "1"
+        can_view_filters = request.form.get("can_view_filters") == "1"
         if perm is None:
             perm = DelegatedAdminPermission(owner_user_id=founder.id, delegate_user_id=target.id)
             db.session.add(perm)
@@ -907,6 +914,7 @@ def admin_edit_permission(target_user_id: int):
         perm.can_reset_password = can_reset_password
         perm.can_view_users_screen = can_view_users_screen
         perm.can_view_charts = can_view_charts
+        perm.can_view_filters = can_view_filters
         db.session.commit()
         flash("Yetkiler kaydedildi.", "success")
         return redirect(url_for("admin_authorized_users"))
@@ -927,6 +935,7 @@ def admin_edit_permission(target_user_id: int):
         can_reset_password=bool(perm.can_reset_password) if perm else False,
         can_view_users_screen=bool(perm.can_view_users_screen) if perm else False,
         can_view_charts=bool(perm.can_view_charts) if perm else False,
+        can_view_filters=bool(perm.can_view_filters) if perm else False,
     )
 
 
@@ -963,6 +972,36 @@ def admin_remove_authorized_user(delegate_user_id: int):
     else:
         flash("Yetki kaydı bulunamadı.", "error")
     return redirect(url_for("admin_authorized_users"))
+
+
+@app.post("/admin/users/<int:target_user_id>/delete")
+@login_required
+@admin_required
+def admin_delete_user(target_user_id: int):
+    founder = session_login_user()
+    target = User.query.get(target_user_id)
+    if not target:
+        flash("Kullanıcı bulunamadı.", "error")
+        return redirect(url_for("admin_users"))
+    if founder and target.id == founder.id:
+        flash("Kurucu kullanıcı kendisini silemez.", "error")
+        return redirect(url_for("admin_users"))
+
+    try:
+        # Kullanıcıya ait tüm verileri temizle
+        OvertimeEntry.query.filter_by(user_id=target.id).delete()
+        UserProfile.query.filter_by(user_id=target.id).delete()
+        DelegatedAdminPermission.query.filter(
+            (DelegatedAdminPermission.delegate_user_id == target.id)
+            | (DelegatedAdminPermission.owner_user_id == target.id)
+        ).delete(synchronize_session=False)
+        db.session.delete(target)
+        db.session.commit()
+        flash("Kullanıcı ve tüm verileri silindi.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(f"Kullanıcı silinemedi: {exc}", "error")
+    return redirect(url_for("admin_users"))
 
 
 @app.get("/admin/impersonate/<int:target_user_id>")
@@ -1978,6 +2017,8 @@ def ensure_delegated_permission_columns():
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_users_screen BOOLEAN NOT NULL DEFAULT FALSE"))
     if "can_view_charts" not in cols:
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_charts BOOLEAN NOT NULL DEFAULT FALSE"))
+    if "can_view_filters" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_filters BOOLEAN NOT NULL DEFAULT FALSE"))
     # eski kolon varsa yeni yapıya taşımak için bir kez eşitle
     if "can_view_passwords" in cols:
         db.session.execute(

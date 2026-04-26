@@ -13,6 +13,7 @@
 
 <div class="card">
     <form method="post" action="{{ url_for('admin_export_selected_users_xlsx') }}">
+        {% if is_founder or can_filters %}
         <div class="admin-filter-bar">
             <label class="filter-col-daire">Daire Başkanlığı
                 <select id="usersFilterDaire">
@@ -25,6 +26,7 @@
                 </select>
             </label>
         </div>
+        {% endif %}
         <div class="table-wrap recent-scroll">
             <table class="compact-table" id="usersTable">
                 <thead>
@@ -61,6 +63,8 @@
                                 data-can-reset="{{ '1' if row.can_reset_password else '0' }}"
                                 data-can-permission="{{ '1' if is_founder else '0' }}"
                                 data-permission-url="{{ url_for('admin_edit_permission', target_user_id=row.user.id) }}"
+                                data-can-delete="{{ '1' if is_founder else '0' }}"
+                                data-delete-url="{{ url_for('admin_delete_user', target_user_id=row.user.id) }}"
                             >⋯</button>
                         </td>
                     </tr>
@@ -126,6 +130,9 @@
         <form id="dlgResetForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı için geçici şifre oluşturulsun mu?');">
             <button type="submit">Şifre Sıfırla</button>
         </form>
+        <form id="dlgDeleteForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı tüm verileriyle silinsin mi? Bu işlem geri alınamaz.');">
+            <button type="submit" class="danger">Kullanıcı Sil</button>
+        </form>
     </div>
     <div class="row-options-footer">
         <button type="button" id="dlgCloseBtn">Kapat</button>
@@ -138,6 +145,7 @@
     const dlgTitle = document.getElementById("rowOptionsTitle");
     const dlgOpenAs = document.getElementById("dlgOpenAs");
     const dlgResetForm = document.getElementById("dlgResetForm");
+    const dlgDeleteForm = document.getElementById("dlgDeleteForm");
     const dlgPermission = document.getElementById("dlgPermission");
     const dlgCloseBtn = document.getElementById("dlgCloseBtn");
     const usersTable = document.getElementById("usersTable");
@@ -150,10 +158,14 @@
             dlgTitle.textContent = `Seçenekler - ${btn.dataset.userName || ""}`;
             dlgOpenAs.href = btn.dataset.openUrl || "#";
             dlgResetForm.action = btn.dataset.resetUrl || "#";
+            dlgDeleteForm.action = btn.dataset.deleteUrl || "#";
             dlgOpenAs.hidden = !(btn.dataset.canOpen === "1");
 
             const canReset = btn.dataset.canReset === "1";
             dlgResetForm.hidden = !canReset;
+
+            const canDelete = btn.dataset.canDelete === "1";
+            dlgDeleteForm.hidden = !canDelete;
 
             if (dlgPermission) {
                 const canPermission = btn.dataset.canPermission === "1";
