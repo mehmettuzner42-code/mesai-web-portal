@@ -655,6 +655,7 @@ def admin_users():
     can_charts_screen = delegate_can(login_user, "charts")
     allowed_ids = allowed_user_ids_for(login_user)
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
+    can_impersonate = delegate_can(login_user, "impersonate")
     # Tum kullanicilari profil ile birlikte listele
     users_query = User.query.order_by(User.created_at.desc())
     users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
@@ -673,7 +674,7 @@ def admin_users():
                 "entry_count": int(entry_counts.get(u.id, 0)),
                 "can_manage_permissions": bool(is_founder_user(login_user)),
                 "can_reset_password": bool(is_founder_user(login_user) or (delegate_perm.can_reset_password if delegate_perm else False)),
-                "can_open_user": bool(delegate_can(login_user, "impersonate")),
+                "can_open_user": bool(can_impersonate and (allowed_ids is None or u.id in allowed_ids)),
             }
         )
 

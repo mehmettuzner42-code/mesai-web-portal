@@ -187,6 +187,13 @@ table form {
     margin-top: 16px;
 }
 
+.admin-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .admin-export-bar {
     margin-top: 12px;
     display: flex;
@@ -337,9 +344,14 @@ table form {
 
 .compare-row {
     display: grid;
-    grid-template-columns: 200px 1fr 42px;
-    gap: 3px;
+    gap: 4px;
+}
+
+.compare-row-head {
+    display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 }
 
 .compare-label {
@@ -376,7 +388,7 @@ table form {
 }
 
 .compare-value {
-    text-align: left;
+    text-align: right;
     font-weight: 700;
     font-size: 13px;
 }
@@ -567,8 +579,7 @@ code {
     }
 
     .compare-row {
-        grid-template-columns: 1fr;
-        gap: 6px;
+        gap: 4px;
     }
 
     .admin-sign-grid {
@@ -580,8 +591,27 @@ code {
         align-items: stretch;
     }
 
+    .admin-filter-bar .filter-col-daire,
+    .admin-filter-bar .filter-col-sube,
+    .admin-filter-bar .filter-col-daire select,
+    .admin-filter-bar .filter-col-sube select {
+        width: 100%;
+        min-width: 0;
+    }
+
+    /* Mobilde imza alanlarini istenen sirayla alt alta diz */
+    .admin-sign-grid {
+        grid-template-columns: 1fr;
+    }
+    .admin-sign-grid label:nth-child(1) { order: 1; } /* Sef Unvan */
+    .admin-sign-grid label:nth-child(4) { order: 2; } /* Sef Ad Soyad */
+    .admin-sign-grid label:nth-child(2) { order: 3; } /* Mudur Unvan */
+    .admin-sign-grid label:nth-child(5) { order: 4; } /* Mudur Ad Soyad */
+    .admin-sign-grid label:nth-child(3) { order: 5; } /* Daire Baskani Unvan */
+    .admin-sign-grid label:nth-child(6) { order: 6; } /* Daire Baskani Ad Soyad */
+
     .compare-value {
-        text-align: left;
+        text-align: right;
     }
 
     .totals-grid .card {

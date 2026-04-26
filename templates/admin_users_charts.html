@@ -24,7 +24,6 @@
             </select>
         </label>
         <button type="submit">Grafiği Güncelle</button>
-        <a class="button-link" href="{{ url_for('admin_users') }}">Tüm Kişiler Listesine Dön</a>
     </form>
 </div>
 
@@ -34,11 +33,13 @@
     <div class="compare-chart">
         {% for r in rows_period %}
         <div class="compare-row">
-            <div class="compare-label">{{ r.name }}</div>
+            <div class="compare-row-head">
+                <div class="compare-label">{{ r.name }}</div>
+                <div class="compare-value">{{ fmt_num(r.period_hours) }}</div>
+            </div>
             <div class="compare-bar-wrap">
                 <div class="compare-bar period" style="width: {{ ((r.period_hours / max_period) * 100) if max_period > 0 else 0 }}%;"></div>
             </div>
-            <div class="compare-value">{{ fmt_num(r.period_hours) }}</div>
         </div>
         {% else %}
         <p>Kayıtlı kullanıcı yok.</p>
@@ -52,11 +53,13 @@
     <div class="compare-chart">
         {% for r in rows_year %}
         <div class="compare-row">
-            <div class="compare-label">{{ r.name }}</div>
+            <div class="compare-row-head">
+                <div class="compare-label">{{ r.name }}</div>
+                <div class="compare-value">{{ fmt_num(r.year_hours) }}</div>
+            </div>
             <div class="compare-bar-wrap">
                 <div class="compare-bar year" style="width: {{ ((r.year_hours / max_year) * 100) if max_year > 0 else 0 }}%;"></div>
             </div>
-            <div class="compare-value">{{ fmt_num(r.year_hours) }}</div>
         </div>
         {% else %}
         <p>Kayıtlı kullanıcı yok.</p>
