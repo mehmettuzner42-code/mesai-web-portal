@@ -1967,7 +1967,7 @@ def ensure_delegated_permission_columns():
             db.text(
                 "UPDATE delegated_admin_permission "
                 "SET can_reset_password = CASE WHEN can_view_passwords IS NULL THEN can_reset_password ELSE can_view_passwords END "
-                "WHERE can_reset_password = 0"
+                "WHERE can_reset_password = FALSE"
             )
         )
     db.session.commit()
