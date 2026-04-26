@@ -1956,11 +1956,11 @@ def ensure_delegated_permission_columns():
     except Exception:
         return
     if "can_reset_password" not in cols:
-        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_reset_password BOOLEAN NOT NULL DEFAULT 0"))
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_reset_password BOOLEAN NOT NULL DEFAULT FALSE"))
     if "can_view_users_screen" not in cols:
-        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_users_screen BOOLEAN NOT NULL DEFAULT 1"))
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_users_screen BOOLEAN NOT NULL DEFAULT TRUE"))
     if "can_view_charts" not in cols:
-        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_charts BOOLEAN NOT NULL DEFAULT 0"))
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_charts BOOLEAN NOT NULL DEFAULT FALSE"))
     # eski kolon varsa yeni yapıya taşımak için bir kez eşitle
     if "can_view_passwords" in cols:
         db.session.execute(
