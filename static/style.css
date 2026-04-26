@@ -237,8 +237,8 @@ table form {
 
 .compare-row {
     display: grid;
-    grid-template-columns: 320px 1fr 80px;
-    gap: 10px;
+    grid-template-columns: 250px 1fr 72px;
+    gap: 6px;
     align-items: center;
 }
 

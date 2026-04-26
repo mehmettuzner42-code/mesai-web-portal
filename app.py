@@ -635,23 +635,23 @@ def admin_users_charts():
         .group_by(OvertimeEntry.user_id)
         .all()
     )
-    year_start = date(selected_year, 1, 1)
-    year_end = date(selected_year, 12, 31)
-    year_agg_rows = (
-        db.session.query(
-            OvertimeEntry.user_id,
-            db.func.sum(OvertimeEntry.pct60),
-            db.func.sum(OvertimeEntry.pct15),
-            db.func.sum(OvertimeEntry.pazar),
-            db.func.sum(OvertimeEntry.bayram),
+    # Yil grafigi, rapor sayfasindaki "donem yili" kuraliyla ayni olmali:
+    # Aralikta baslayan donem bir sonraki yila yazilir.
+    all_year_entries = OvertimeEntry.query.all()
+    year_agg = {}
+    for e in all_year_entries:
+        ps = period_start_for_date(e.work_date)
+        py = period_year(ps.year, ps.month)
+        if py != selected_year:
+            continue
+        d = year_agg.setdefault(
+            int(e.user_id),
+            {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0},
         )
-        .filter(
-            OvertimeEntry.work_date >= year_start,
-            OvertimeEntry.work_date <= year_end,
-        )
-        .group_by(OvertimeEntry.user_id)
-        .all()
-    )
+        d["pct60"] += float(e.pct60 or 0)
+        d["pct15"] += float(e.pct15 or 0)
+        d["pazar"] += float(e.pazar or 0)
+        d["bayram"] += float(e.bayram or 0)
 
     period_agg = {
         int(uid): {
@@ -662,16 +662,6 @@ def admin_users_charts():
         }
         for uid, s60, s15, sp, sb in period_agg_rows
     }
-    year_agg = {
-        int(uid): {
-            "pct60": float(s60 or 0),
-            "pct15": float(s15 or 0),
-            "pazar": float(sp or 0),
-            "bayram": float(sb or 0),
-        }
-        for uid, s60, s15, sp, sb in year_agg_rows
-    }
-
     rows = []
     for u in users:
         p = profiles.get(u.id) or UserProfile(user_id=u.id)
