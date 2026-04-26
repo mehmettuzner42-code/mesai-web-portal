@@ -331,7 +331,7 @@ def is_founder_user(user: User) -> bool:
 
 
 def founder_user_id() -> int:
-    u = User.query.filter_by(email=FOUNDER_EMAIL).first()
+    u = User.query.filter(db.func.lower(User.email) == FOUNDER_EMAIL.lower()).first()
     return int(u.id) if u else 0
 
 
@@ -1978,6 +1978,15 @@ def ensure_delegated_permission_columns():
                 "UPDATE delegated_admin_permission "
                 "SET can_view_passwords = FALSE "
                 "WHERE can_view_passwords IS NULL"
+            )
+        )
+    # Eski kayitlarda kullanici ekrani yetkisi kapali kaldiysa ac.
+    if "can_view_users_screen" in cols:
+        db.session.execute(
+            db.text(
+                "UPDATE delegated_admin_permission "
+                "SET can_view_users_screen = TRUE "
+                "WHERE can_view_users_screen = FALSE"
             )
         )
     db.session.commit()
