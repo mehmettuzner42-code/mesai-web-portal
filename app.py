@@ -791,8 +791,12 @@ def admin_users_charts():
 
     rows_period = sorted(rows, key=lambda x: x["period_hours"], reverse=True)
     rows_year = sorted(rows, key=lambda x: x["year_hours"], reverse=True)
+    rows_year_pazar = sorted(rows, key=lambda x: float(x["year"].get("pazar", 0) or 0), reverse=True)
+    rows_year_bayram = sorted(rows, key=lambda x: float(x["year"].get("bayram", 0) or 0), reverse=True)
     max_period = max([r["period_hours"] for r in rows_period] + [1.0])
     max_year = max([r["year_hours"] for r in rows_year] + [1.0])
+    max_year_pazar = max([float(r["year"].get("pazar", 0) or 0) for r in rows_year_pazar] + [1.0])
+    max_year_bayram = max([float(r["year"].get("bayram", 0) or 0) for r in rows_year_bayram] + [1.0])
     year_total_pazar = sum(float(r["year"].get("pazar", 0) or 0) for r in rows_year)
     year_total_bayram = sum(float(r["year"].get("bayram", 0) or 0) for r in rows_year)
 
@@ -800,8 +804,12 @@ def admin_users_charts():
         "admin_users_charts.html",
         rows_period=rows_period,
         rows_year=rows_year,
+        rows_year_pazar=rows_year_pazar,
+        rows_year_bayram=rows_year_bayram,
         max_period=max_period,
         max_year=max_year,
+        max_year_pazar=max_year_pazar,
+        max_year_bayram=max_year_bayram,
         years=years,
         selected_year=selected_year,
         period_options=period_options,

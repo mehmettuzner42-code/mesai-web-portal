@@ -50,8 +50,6 @@
 <div class="card">
     <h3>Yıl Grafiği ({{ selected_year }})</h3>
     <p>Karşılaştırma metriği: sadece %60 mesai saati</p>
-    <p>Pazar Mesaisi Toplamı: <strong>{{ fmt_num(year_total_pazar) }}</strong></p>
-    <p>Bayram Mesaisi Toplamı: <strong>{{ fmt_num(year_total_bayram) }}</strong></p>
     <div class="compare-chart">
         {% for r in rows_year %}
         <div class="compare-row">
@@ -61,6 +59,48 @@
             </div>
             <div class="compare-bar-wrap">
                 <div class="compare-bar year" style="width: {{ ((r.year_hours / max_year) * 100) if max_year > 0 else 0 }}%;"></div>
+            </div>
+        </div>
+        {% else %}
+        <p>Kayıtlı kullanıcı yok.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card">
+    <h3>Pazar Mesaisi Grafiği ({{ selected_year }})</h3>
+    <p>Yıl toplamı: <strong>{{ fmt_num(year_total_pazar) }}</strong></p>
+    <div class="compare-chart">
+        {% for r in rows_year_pazar %}
+        {% set v = r.year.pazar %}
+        <div class="compare-row">
+            <div class="compare-row-head">
+                <div class="compare-label">{{ r.name }}</div>
+                <div class="compare-value">{{ fmt_num(v) }}</div>
+            </div>
+            <div class="compare-bar-wrap">
+                <div class="compare-bar year" style="width: {{ ((v / max_year_pazar) * 100) if max_year_pazar > 0 else 0 }}%;"></div>
+            </div>
+        </div>
+        {% else %}
+        <p>Kayıtlı kullanıcı yok.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card">
+    <h3>Bayram Mesaisi Grafiği ({{ selected_year }})</h3>
+    <p>Yıl toplamı: <strong>{{ fmt_num(year_total_bayram) }}</strong></p>
+    <div class="compare-chart">
+        {% for r in rows_year_bayram %}
+        {% set v = r.year.bayram %}
+        <div class="compare-row">
+            <div class="compare-row-head">
+                <div class="compare-label">{{ r.name }}</div>
+                <div class="compare-value">{{ fmt_num(v) }}</div>
+            </div>
+            <div class="compare-bar-wrap">
+                <div class="compare-bar year" style="width: {{ ((v / max_year_bayram) * 100) if max_year_bayram > 0 else 0 }}%;"></div>
             </div>
         </div>
         {% else %}
