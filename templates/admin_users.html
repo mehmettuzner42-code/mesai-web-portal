@@ -14,13 +14,12 @@
                 <thead>
                     <tr>
                         <th>Seç</th>
-                        <th>E-posta</th>
+                        <th>Sicil No</th>
+                        <th>Ad Soyad</th>
                         <th>Daire Başkanlığı</th>
                         <th>Şube Müdürlüğü</th>
-                        <th>Ad Soyad</th>
-                        <th>Sicil No</th>
                         <th>Ekip Kodu</th>
-                        <th>Kayıt Sayısı</th>
+                        <th>E-posta</th>
                         <th>Seçenekler</th>
                     </tr>
                 </thead>
@@ -28,19 +27,18 @@
                     {% for row in rows %}
                     <tr>
                         <td><input type="checkbox" name="selected_user_ids" value="{{ row.user.id }}"></td>
-                        <td>{{ row.user.email }}</td>
+                        <td>{{ row.profile.sicil_no or "-" }}</td>
+                        <td>{{ row.profile.ad_soyad or "-" }}</td>
                         <td>{{ row.profile.daire_baskanligi or "-" }}</td>
                         <td>{{ row.profile.sube_mudurlugu or "-" }}</td>
-                        <td>{{ row.profile.ad_soyad or "-" }}</td>
-                        <td>{{ row.profile.sicil_no or "-" }}</td>
                         <td>{{ row.profile.ekip_kodu or "-" }}</td>
-                        <td>{{ row.entry_count }}</td>
+                        <td>{{ row.user.email }}</td>
                         <td>
                             <button
                                 type="button"
                                 class="row-options-btn"
                                 title="Seçenekler"
-                                data-user-email="{{ row.user.email }}"
+                                data-user-name="{{ row.profile.ad_soyad or '-' }}"
                                 data-open-url="{{ url_for('admin_impersonate', target_user_id=row.user.id) }}"
                                 data-reset-url="{{ url_for('admin_reset_password', target_user_id=row.user.id) }}"
                                 data-can-reset="{{ '1' if row.can_view_passwords else '0' }}"
@@ -51,7 +49,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="9">Henüz kullanıcı yok.</td>
+                        <td colspan="8">Henüz kullanıcı yok.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -126,7 +124,7 @@
 
     document.querySelectorAll(".row-options-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
-            dlgTitle.textContent = `Seçenekler - ${btn.dataset.userEmail || ""}`;
+            dlgTitle.textContent = `Seçenekler - ${btn.dataset.userName || ""}`;
             dlgOpenAs.href = btn.dataset.openUrl || "#";
             dlgResetForm.action = btn.dataset.resetUrl || "#";
 

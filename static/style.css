@@ -263,9 +263,28 @@ table form {
     gap: 8px;
 }
 
+.row-options-actions .button-link,
+.row-options-actions form button {
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.row-options-actions form {
+    margin: 0;
+}
+
 .row-options-footer {
     margin-top: 10px;
     text-align: right;
+}
+
+.row-options-footer button {
+    background: #dc2626;
+}
+
+.row-options-footer button:hover {
+    background: #991b1b;
 }
 
 .compare-chart {
