@@ -706,6 +706,7 @@ def admin_users_charts():
         period_value=f"{active_start[0]:04d}-{active_start[1]:02d}",
         period_start=p_start,
         period_end=p_end,
+        format_dmy=format_dmy,
     )
 
 
