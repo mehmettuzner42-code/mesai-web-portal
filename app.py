@@ -5,6 +5,8 @@ import json
 import os
 import secrets
 import smtplib
+import urllib.error
+import urllib.request
 from datetime import date, datetime
 from email.message import EmailMessage
 from functools import wraps
@@ -45,6 +47,10 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:/
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["RESET_TOKEN_EXPIRE_MIN"] = int(os.environ.get("RESET_TOKEN_EXPIRE_MIN", "30"))
 app.config["APK_URL"] = os.environ.get("APK_URL", "/download-apk")
+app.config["UPDATE_MANIFEST_URL"] = os.environ.get(
+    "UPDATE_MANIFEST_URL",
+    "https://github.com/mehmettuzner42-code/mesai-app/releases/latest/download/update.json",
+)
 app.config["SMTP_HOST"] = os.environ.get("SMTP_HOST", "")
 app.config["SMTP_PORT"] = int(os.environ.get("SMTP_PORT", "587"))
 app.config["SMTP_USERNAME"] = os.environ.get("SMTP_USERNAME", "")
@@ -1763,6 +1769,26 @@ def download_apk():
     if user is None:
         flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
         return redirect(url_for("login"))
+
+    # APK uygulamasiyla ayni guncelleme kaynagi: update manifest -> apkUrl.
+    manifest_url = (app.config.get("UPDATE_MANIFEST_URL") or "").strip()
+    if manifest_url:
+        try:
+            req = urllib.request.Request(
+                manifest_url,
+                headers={"User-Agent": "MesaiWebPortal/1.0"},
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                if resp.status == 200:
+                    payload = json.loads(resp.read().decode("utf-8"))
+                    apk_from_manifest = str(payload.get("apkUrl", "")).strip()
+                    if apk_from_manifest:
+                        return redirect(apk_from_manifest)
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, KeyError):
+            # Manifeste erisilemezse asagidaki fallback adimlari calissin.
+            pass
+        except Exception:
+            pass
 
     # Dis URL tanimliysa (ornegin GitHub release), tek noktadan yonlendir.
     configured_apk_url = (app.config.get("APK_URL") or "").strip()
