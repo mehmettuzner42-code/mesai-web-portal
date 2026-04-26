@@ -788,8 +788,39 @@ def admin_show_password(target_user_id: int):
         flash("Şifre görme yetkiniz yok.", "error")
         return redirect(url_for("admin_users"))
     flash(
-        f"{target.email} için mevcut şifre güvenlik nedeniyle görüntülenemez (hashli saklanır). Gerekirse şifre sıfırlama kullanın.",
+        f"{target.email} için mevcut şifre güvenlik nedeniyle görüntülenemez (hashli saklanır). Bunun yerine 'Şifre Sıfırla' kullanın.",
         "error",
+    )
+    return redirect(url_for("admin_users"))
+
+
+@app.post("/admin/users/<int:target_user_id>/reset-password")
+@login_required
+@admin_or_delegate_required
+def admin_reset_password(target_user_id: int):
+    login_user = session_login_user()
+    allowed_ids = allowed_user_ids_for(login_user)
+    if allowed_ids is not None and target_user_id not in allowed_ids:
+        flash("Bu kullanıcı için yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    delegate_perm = get_delegate_permission(login_user.id) if login_user else None
+    can_reset = bool(is_founder_user(login_user) or (delegate_perm.can_view_passwords if delegate_perm else False))
+    if not can_reset:
+        flash("Şifre sıfırlama yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+
+    target = User.query.get(target_user_id)
+    if not target:
+        flash("Kullanıcı bulunamadı.", "error")
+        return redirect(url_for("admin_users"))
+
+    # Kolay okunur geçici şifre üretimi (kullanıcı ilk girişte değiştirmeli).
+    temp_password = secrets.token_urlsafe(9)[:12]
+    target.password_hash = generate_password_hash(temp_password)
+    db.session.commit()
+    flash(
+        f"{target.email} için geçici şifre oluşturuldu: {temp_password} (kullanıcı giriş yapınca şifresini değiştirmeli).",
+        "success",
     )
     return redirect(url_for("admin_users"))
 

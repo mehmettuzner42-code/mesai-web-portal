@@ -42,6 +42,9 @@
                                     <a class="button-link mini" href="{{ url_for('admin_impersonate', target_user_id=row.user.id) }}">Kullanıcı Olarak Aç</a>
                                     {% if row.can_view_passwords %}
                                     <a class="button-link mini" href="{{ url_for('admin_show_password', target_user_id=row.user.id) }}">Şifre Gör</a>
+                                    <form method="post" action="{{ url_for('admin_reset_password', target_user_id=row.user.id) }}" onsubmit="return confirm('Bu kullanıcı için geçici şifre oluşturulsun mu?');">
+                                        <button type="submit">Şifre Sıfırla</button>
+                                    </form>
                                     {% endif %}
                                     {% if is_founder %}
                                     <a class="button-link mini" href="{{ url_for('admin_edit_permission', target_user_id=row.user.id) }}">Yetki Ver</a>
