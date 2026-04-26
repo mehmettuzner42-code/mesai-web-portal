@@ -7,17 +7,34 @@
 
 <div class="card">
     <form method="post" class="grid">
-        <h3>Yetkiler</h3>
-        <label><input type="checkbox" name="can_reset_password" value="1" {% if can_reset_password %}checked{% endif %}> Şifre Sıfırlama</label>
-        <label><input type="checkbox" name="can_view_users_screen" value="1" {% if can_view_users_screen %}checked{% endif %}> Kullanıcı Ekranı Görme</label>
-        <label><input type="checkbox" name="can_view_charts" value="1" {% if can_view_charts %}checked{% endif %}> Grafik Ekranı Görme</label>
+        <div class="permission-section">
+            <h3>Yetkiler</h3>
+            <div class="permission-check-grid">
+                <label><input type="checkbox" name="can_reset_password" value="1" {% if can_reset_password %}checked{% endif %}> <span>Şifre Sıfırlama</span></label>
+                <label><input type="checkbox" name="can_view_users_screen" value="1" {% if can_view_users_screen %}checked{% endif %}> <span>Kullanıcı Ekranı Görme</span></label>
+                <label><input type="checkbox" name="can_view_charts" value="1" {% if can_view_charts %}checked{% endif %}> <span>Grafik Ekranı Görme</span></label>
+            </div>
+        </div>
 
+        <div class="permission-section">
         <h3>Görebileceği Kullanıcılar</h3>
+        <div class="admin-filter-bar">
+            <label>Daire Başkanlığı
+                <select id="permFilterDaire">
+                    <option value="">Tümü</option>
+                </select>
+            </label>
+            <label>Şube Müdürlüğü
+                <select id="permFilterSube">
+                    <option value="">Tümü</option>
+                </select>
+            </label>
+        </div>
         <div class="table-wrap recent-scroll">
-            <table class="compact-table">
+            <table class="compact-table" id="permUsersTable">
                 <thead>
                     <tr>
-                        <th>Seç</th>
+                        <th><input type="checkbox" id="permSelectAll" title="Tümünü Seç"></th>
                         <th>Sicil No</th>
                         <th>Ad Soyad</th>
                         <th>Daire Başkanlığı</th>
@@ -30,12 +47,12 @@
                     {% for u in users %}
                     {% if u.id != target.id %}
                     {% set p = profiles.get(u.id) %}
-                    <tr>
-                        <td><input type="checkbox" name="allowed_user_ids" value="{{ u.id }}" {% if u.id in current_allowed %}checked{% endif %}></td>
+                    <tr class="selectable-row">
+                        <td><input class="row-select" type="checkbox" name="allowed_user_ids" value="{{ u.id }}" {% if u.id in current_allowed %}checked{% endif %}></td>
                         <td>{{ (p.sicil_no if p else "") or "-" }}</td>
                         <td>{{ (p.ad_soyad if p else "") or "-" }}</td>
-                        <td>{{ (p.daire_baskanligi if p else "") or "-" }}</td>
-                        <td>{{ (p.sube_mudurlugu if p else "") or "-" }}</td>
+                        <td class="filter-daire">{{ (p.daire_baskanligi if p else "") or "-" }}</td>
+                        <td class="filter-sube">{{ (p.sube_mudurlugu if p else "") or "-" }}</td>
                         <td>{{ (p.ekip_kodu if p else "") or "-" }}</td>
                         <td>{{ u.email }}</td>
                     </tr>
@@ -44,7 +61,99 @@
                 </tbody>
             </table>
         </div>
+        </div>
         <button type="submit">Yetkileri Kaydet</button>
     </form>
 </div>
+<script>
+(() => {
+    const table = document.getElementById("permUsersTable");
+    const selectAll = document.getElementById("permSelectAll");
+    const filterDaire = document.getElementById("permFilterDaire");
+    const filterSube = document.getElementById("permFilterSube");
+    if (!table || !selectAll || !filterDaire || !filterSube) return;
+
+    function updateRowHighlight(checkbox) {
+        const tr = checkbox.closest("tr");
+        if (!tr) return;
+        tr.classList.toggle("selected-row", checkbox.checked);
+    }
+
+    function visibleRows() {
+        return Array.from(table.querySelectorAll("tbody tr.selectable-row")).filter((tr) => tr.style.display !== "none");
+    }
+
+    function syncSelectAll() {
+        const rows = visibleRows();
+        if (rows.length === 0) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            return;
+        }
+        const checks = rows.map((tr) => tr.querySelector("input.row-select")).filter(Boolean);
+        const checkedCount = checks.filter((c) => c.checked).length;
+        selectAll.checked = checkedCount === checks.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < checks.length;
+    }
+
+    function refreshFilterOptions() {
+        const rows = Array.from(table.querySelectorAll("tbody tr.selectable-row"));
+        const daires = new Set();
+        const subes = new Set();
+        rows.forEach((tr) => {
+            daires.add((tr.querySelector(".filter-daire")?.textContent || "").trim());
+            subes.add((tr.querySelector(".filter-sube")?.textContent || "").trim());
+        });
+        const fill = (select, values) => {
+            const current = select.value;
+            const first = select.querySelector("option")?.outerHTML || "<option value=''>Tümü</option>";
+            select.innerHTML = first;
+            Array.from(values).filter((v) => v && v !== "-").sort((a, b) => a.localeCompare(b, "tr")).forEach((v) => {
+                const opt = document.createElement("option");
+                opt.value = v;
+                opt.textContent = v;
+                select.appendChild(opt);
+            });
+            select.value = current;
+        };
+        fill(filterDaire, daires);
+        fill(filterSube, subes);
+    }
+
+    function applyFilters() {
+        const daire = filterDaire.value;
+        const sube = filterSube.value;
+        Array.from(table.querySelectorAll("tbody tr.selectable-row")).forEach((tr) => {
+            const d = (tr.querySelector(".filter-daire")?.textContent || "").trim();
+            const s = (tr.querySelector(".filter-sube")?.textContent || "").trim();
+            const okD = !daire || d === daire;
+            const okS = !sube || s === sube;
+            tr.style.display = (okD && okS) ? "" : "none";
+        });
+        syncSelectAll();
+    }
+
+    filterDaire.addEventListener("change", applyFilters);
+    filterSube.addEventListener("change", applyFilters);
+    selectAll.addEventListener("change", () => {
+        visibleRows().forEach((tr) => {
+            const cb = tr.querySelector("input.row-select");
+            if (!cb) return;
+            cb.checked = selectAll.checked;
+            updateRowHighlight(cb);
+        });
+        syncSelectAll();
+    });
+    table.querySelectorAll("input.row-select").forEach((cb) => {
+        cb.addEventListener("change", () => {
+            updateRowHighlight(cb);
+            syncSelectAll();
+        });
+        updateRowHighlight(cb);
+    });
+
+    refreshFilterOptions();
+    applyFilters();
+})();
+</script>
 {% endblock %}

@@ -11,11 +11,23 @@
 
 <div class="card">
     <form method="post" action="{{ url_for('admin_export_selected_users_xlsx') }}">
+        <div class="admin-filter-bar">
+            <label>Daire Başkanlığı
+                <select id="usersFilterDaire">
+                    <option value="">Tümü</option>
+                </select>
+            </label>
+            <label>Şube Müdürlüğü
+                <select id="usersFilterSube">
+                    <option value="">Tümü</option>
+                </select>
+            </label>
+        </div>
         <div class="table-wrap recent-scroll">
-            <table class="compact-table">
+            <table class="compact-table" id="usersTable">
                 <thead>
                     <tr>
-                        <th>Seç</th>
+                        <th><input type="checkbox" id="usersSelectAll" title="Tümünü Seç"></th>
                         <th>Sicil No</th>
                         <th>Ad Soyad</th>
                         <th>Daire Başkanlığı</th>
@@ -27,12 +39,12 @@
                 </thead>
                 <tbody>
                     {% for row in rows %}
-                    <tr>
-                        <td><input type="checkbox" name="selected_user_ids" value="{{ row.user.id }}"></td>
+                    <tr class="selectable-row">
+                        <td><input class="row-select" type="checkbox" name="selected_user_ids" value="{{ row.user.id }}"></td>
                         <td>{{ row.profile.sicil_no or "-" }}</td>
                         <td>{{ row.profile.ad_soyad or "-" }}</td>
-                        <td>{{ row.profile.daire_baskanligi or "-" }}</td>
-                        <td>{{ row.profile.sube_mudurlugu or "-" }}</td>
+                        <td class="filter-daire">{{ row.profile.daire_baskanligi or "-" }}</td>
+                        <td class="filter-sube">{{ row.profile.sube_mudurlugu or "-" }}</td>
                         <td>{{ row.profile.ekip_kodu or "-" }}</td>
                         <td>{{ row.user.email }}</td>
                         <td>
@@ -124,6 +136,10 @@
     const dlgResetForm = document.getElementById("dlgResetForm");
     const dlgPermission = document.getElementById("dlgPermission");
     const dlgCloseBtn = document.getElementById("dlgCloseBtn");
+    const usersTable = document.getElementById("usersTable");
+    const usersSelectAll = document.getElementById("usersSelectAll");
+    const usersFilterDaire = document.getElementById("usersFilterDaire");
+    const usersFilterSube = document.getElementById("usersFilterSube");
 
     document.querySelectorAll(".row-options-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -153,6 +169,88 @@
             e.clientY <= rect.bottom;
         if (!inDialog) dlg.close();
     });
+
+    function updateRowHighlight(checkbox) {
+        const tr = checkbox.closest("tr");
+        if (!tr) return;
+        tr.classList.toggle("selected-row", checkbox.checked);
+    }
+
+    function visibleRows() {
+        return Array.from(usersTable.querySelectorAll("tbody tr.selectable-row")).filter((tr) => tr.style.display !== "none");
+    }
+
+    function syncSelectAll() {
+        const rows = visibleRows();
+        if (rows.length === 0) {
+            usersSelectAll.checked = false;
+            usersSelectAll.indeterminate = false;
+            return;
+        }
+        const checks = rows.map((tr) => tr.querySelector("input.row-select")).filter(Boolean);
+        const checkedCount = checks.filter((c) => c.checked).length;
+        usersSelectAll.checked = checkedCount === checks.length;
+        usersSelectAll.indeterminate = checkedCount > 0 && checkedCount < checks.length;
+    }
+
+    function refreshFilterOptions() {
+        const rows = Array.from(usersTable.querySelectorAll("tbody tr.selectable-row"));
+        const daires = new Set();
+        const subes = new Set();
+        rows.forEach((tr) => {
+            daires.add((tr.querySelector(".filter-daire")?.textContent || "").trim());
+            subes.add((tr.querySelector(".filter-sube")?.textContent || "").trim());
+        });
+        const fill = (select, values) => {
+            const current = select.value;
+            const first = select.querySelector("option")?.outerHTML || "<option value=''>Tümü</option>";
+            select.innerHTML = first;
+            Array.from(values).filter((v) => v && v !== "-").sort((a, b) => a.localeCompare(b, "tr")).forEach((v) => {
+                const opt = document.createElement("option");
+                opt.value = v;
+                opt.textContent = v;
+                select.appendChild(opt);
+            });
+            select.value = current;
+        };
+        fill(usersFilterDaire, daires);
+        fill(usersFilterSube, subes);
+    }
+
+    function applyFilters() {
+        const daire = usersFilterDaire.value;
+        const sube = usersFilterSube.value;
+        Array.from(usersTable.querySelectorAll("tbody tr.selectable-row")).forEach((tr) => {
+            const d = (tr.querySelector(".filter-daire")?.textContent || "").trim();
+            const s = (tr.querySelector(".filter-sube")?.textContent || "").trim();
+            const okD = !daire || d === daire;
+            const okS = !sube || s === sube;
+            tr.style.display = (okD && okS) ? "" : "none";
+        });
+        syncSelectAll();
+    }
+
+    usersFilterDaire.addEventListener("change", applyFilters);
+    usersFilterSube.addEventListener("change", applyFilters);
+    usersSelectAll.addEventListener("change", () => {
+        visibleRows().forEach((tr) => {
+            const cb = tr.querySelector("input.row-select");
+            if (!cb) return;
+            cb.checked = usersSelectAll.checked;
+            updateRowHighlight(cb);
+        });
+        syncSelectAll();
+    });
+    usersTable.querySelectorAll("input.row-select").forEach((cb) => {
+        cb.addEventListener("change", () => {
+            updateRowHighlight(cb);
+            syncSelectAll();
+        });
+        updateRowHighlight(cb);
+    });
+
+    refreshFilterOptions();
+    applyFilters();
 })();
 </script>
 {% endblock %}

@@ -202,6 +202,37 @@ table form {
     gap: 8px;
 }
 
+.admin-filter-bar {
+    margin: 0 0 8px 0;
+    display: flex;
+    gap: 10px;
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.permission-section {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.permission-check-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.permission-check-grid label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.selectable-row.selected-row td {
+    background: #e0f2fe !important;
+    border-color: #7dd3fc;
+}
+
 .row-menu {
     position: relative;
 }
@@ -273,6 +304,7 @@ table form {
     align-items: center;
     justify-content: center;
     font-size: 12px;
+    line-height: 1.2;
 }
 
 .row-options-actions form {
@@ -535,6 +567,11 @@ code {
 
     .admin-sign-grid {
         grid-template-columns: 1fr;
+    }
+
+    .admin-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .compare-value {
