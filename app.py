@@ -683,9 +683,9 @@ def admin_users_charts():
                 "name": p.ad_soyad or "-",
                 "period": pa,
                 "year": ya,
-                # Grafik metriği: saat bazlı karşılaştırma (%60 + %15)
-                "period_hours": pa["pct60"] + pa["pct15"],
-                "year_hours": ya["pct60"] + ya["pct15"],
+                # Grafik metriği: sadece %60 mesai
+                "period_hours": pa["pct60"],
+                "year_hours": ya["pct60"],
             }
         )
 

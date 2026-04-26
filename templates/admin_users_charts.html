@@ -30,11 +30,11 @@
 
 <div class="card">
     <h3>Dönem Grafiği ({{ format_dmy(period_start) }} - {{ format_dmy(period_end) }})</h3>
-    <p>Karşılaştırma metriği: %60 + %15 saat toplamı</p>
+    <p>Karşılaştırma metriği: sadece %60 mesai saati</p>
     <div class="compare-chart">
         {% for r in rows_period %}
         <div class="compare-row">
-            <div class="compare-label">{{ r.name }} <span>({{ r.email }})</span></div>
+            <div class="compare-label">{{ r.name }}</div>
             <div class="compare-bar-wrap">
                 <div class="compare-bar period" style="width: {{ ((r.period_hours / max_period) * 100) if max_period > 0 else 0 }}%;"></div>
             </div>
@@ -48,11 +48,11 @@
 
 <div class="card">
     <h3>Yıl Grafiği ({{ selected_year }})</h3>
-    <p>Karşılaştırma metriği: %60 + %15 saat toplamı</p>
+    <p>Karşılaştırma metriği: sadece %60 mesai saati</p>
     <div class="compare-chart">
         {% for r in rows_year %}
         <div class="compare-row">
-            <div class="compare-label">{{ r.name }} <span>({{ r.email }})</span></div>
+            <div class="compare-label">{{ r.name }}</div>
             <div class="compare-bar-wrap">
                 <div class="compare-bar year" style="width: {{ ((r.year_hours / max_year) * 100) if max_year > 0 else 0 }}%;"></div>
             </div>
