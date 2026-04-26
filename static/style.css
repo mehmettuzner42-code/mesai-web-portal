@@ -233,6 +233,41 @@ table form {
     min-width: 150px;
 }
 
+.row-options-btn {
+    background: #0f172a;
+    color: #fff;
+    border-radius: 8px;
+    padding: 3px 10px;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.row-options-dialog {
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    width: min(92vw, 360px);
+}
+
+.row-options-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.row-options-dialog h3 {
+    margin: 0 0 10px 0;
+    font-size: 16px;
+}
+
+.row-options-actions {
+    display: grid;
+    gap: 8px;
+}
+
+.row-options-footer {
+    margin-top: 10px;
+    text-align: right;
+}
+
 .compare-chart {
     display: grid;
     gap: 8px;
