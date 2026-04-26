@@ -11,6 +11,7 @@ from functools import wraps
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl import Workbook, load_workbook
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from werkzeug.security import check_password_hash, generate_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
@@ -336,7 +337,13 @@ def get_delegate_permission(user_id: int):
     fid = founder_user_id()
     if not fid:
         return None
-    return DelegatedAdminPermission.query.filter_by(owner_user_id=fid, delegate_user_id=user_id).first()
+    try:
+        return DelegatedAdminPermission.query.filter_by(owner_user_id=fid, delegate_user_id=user_id).first()
+    except (OperationalError, ProgrammingError):
+        db.session.rollback()
+        # Canlıda kolonlar henüz oluşmadıysa otomatik tamamla ve tekrar dene.
+        ensure_delegated_permission_columns()
+        return DelegatedAdminPermission.query.filter_by(owner_user_id=fid, delegate_user_id=user_id).first()
 
 
 def allowed_user_ids_for(user: User):
