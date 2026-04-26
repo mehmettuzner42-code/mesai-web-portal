@@ -115,7 +115,7 @@ class DelegatedAdminPermission(db.Model):
     # Legacy kolon (eski surumlerle uyumluluk icin tutuluyor)
     can_view_passwords = db.Column(db.Boolean, default=False, nullable=False)
     can_reset_password = db.Column(db.Boolean, default=False, nullable=False)
-    can_view_users_screen = db.Column(db.Boolean, default=True, nullable=False)
+    can_view_users_screen = db.Column(db.Boolean, default=False, nullable=False)
     can_view_charts = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -925,7 +925,7 @@ def admin_edit_permission(target_user_id: int):
         profiles={p.user_id: p for p in UserProfile.query.all()},
         current_allowed=current_allowed,
         can_reset_password=bool(perm.can_reset_password) if perm else False,
-        can_view_users_screen=bool(perm.can_view_users_screen) if perm else True,
+        can_view_users_screen=bool(perm.can_view_users_screen) if perm else False,
         can_view_charts=bool(perm.can_view_charts) if perm else False,
     )
 
@@ -1975,7 +1975,7 @@ def ensure_delegated_permission_columns():
     if "can_reset_password" not in cols:
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_reset_password BOOLEAN NOT NULL DEFAULT FALSE"))
     if "can_view_users_screen" not in cols:
-        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_users_screen BOOLEAN NOT NULL DEFAULT TRUE"))
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_users_screen BOOLEAN NOT NULL DEFAULT FALSE"))
     if "can_view_charts" not in cols:
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_charts BOOLEAN NOT NULL DEFAULT FALSE"))
     # eski kolon varsa yeni yapıya taşımak için bir kez eşitle
