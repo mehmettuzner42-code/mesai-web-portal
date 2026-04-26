@@ -32,6 +32,7 @@
                 <thead>
                     <tr>
                         <th><input type="checkbox" id="usersSelectAll" title="Tümünü Seç"></th>
+                        <th>Sıra</th>
                         <th>Sicil No</th>
                         <th>Ad Soyad</th>
                         <th>Daire Başkanlığı</th>
@@ -45,6 +46,7 @@
                     {% for row in rows %}
                     <tr class="selectable-row">
                         <td><input class="row-select" type="checkbox" name="selected_user_ids" value="{{ row.user.id }}"></td>
+                        <td class="row-order-cell"></td>
                         <td>{{ row.profile.sicil_no or "-" }}</td>
                         <td>{{ row.profile.ad_soyad or "-" }}</td>
                         <td class="filter-daire">{{ row.profile.daire_baskanligi or "-" }}</td>
@@ -63,14 +65,16 @@
                                 data-can-reset="{{ '1' if row.can_reset_password else '0' }}"
                                 data-can-permission="{{ '1' if is_founder else '0' }}"
                                 data-permission-url="{{ url_for('admin_edit_permission', target_user_id=row.user.id) }}"
-                                data-can-delete="{{ '1' if is_founder else '0' }}"
+                                {% if is_founder %}
+                                data-can-delete="1"
                                 data-delete-url="{{ url_for('admin_delete_user', target_user_id=row.user.id) }}"
+                                {% endif %}
                             >⋯</button>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="8">Henüz kullanıcı yok.</td>
+                        <td colspan="9">Henüz kullanıcı yok.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -130,9 +134,11 @@
         <form id="dlgResetForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı için geçici şifre oluşturulsun mu?');">
             <button type="submit">Şifre Sıfırla</button>
         </form>
+        {% if is_founder %}
         <form id="dlgDeleteForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı tüm verileriyle silinsin mi? Bu işlem geri alınamaz.');">
             <button type="submit" class="danger">Kullanıcı Sil</button>
         </form>
+        {% endif %}
     </div>
     <div class="row-options-footer">
         <button type="button" id="dlgCloseBtn">Kapat</button>
@@ -158,14 +164,18 @@
             dlgTitle.textContent = `Seçenekler - ${btn.dataset.userName || ""}`;
             dlgOpenAs.href = btn.dataset.openUrl || "#";
             dlgResetForm.action = btn.dataset.resetUrl || "#";
-            dlgDeleteForm.action = btn.dataset.deleteUrl || "#";
+            if (dlgDeleteForm) {
+                dlgDeleteForm.action = btn.dataset.deleteUrl || "#";
+            }
             dlgOpenAs.hidden = !(btn.dataset.canOpen === "1");
 
             const canReset = btn.dataset.canReset === "1";
             dlgResetForm.hidden = !canReset;
 
-            const canDelete = btn.dataset.canDelete === "1";
-            dlgDeleteForm.hidden = !canDelete;
+            if (dlgDeleteForm) {
+                const canDelete = btn.dataset.canDelete === "1";
+                dlgDeleteForm.hidden = !canDelete;
+            }
 
             if (dlgPermission) {
                 const canPermission = btn.dataset.canPermission === "1";
@@ -197,6 +207,19 @@
 
     function visibleRows() {
         return Array.from(usersTable.querySelectorAll("tbody tr.selectable-row")).filter((tr) => tr.style.display !== "none");
+    }
+
+    function refreshOrderNumbers() {
+        let i = 1;
+        Array.from(usersTable.querySelectorAll("tbody tr.selectable-row")).forEach((tr) => {
+            const cell = tr.querySelector(".row-order-cell");
+            if (!cell) return;
+            if (tr.style.display === "none") {
+                cell.textContent = "";
+            } else {
+                cell.textContent = String(i++);
+            }
+        });
     }
 
     function syncSelectAll() {
@@ -246,6 +269,7 @@
             const okS = !sube || s === sube;
             tr.style.display = (okD && okS) ? "" : "none";
         });
+        refreshOrderNumbers();
         syncSelectAll();
     }
 
@@ -270,6 +294,7 @@
 
     refreshFilterOptions();
     applyFilters();
+    refreshOrderNumbers();
 })();
 </script>
 {% endblock %}

@@ -36,6 +36,7 @@
                 <thead>
                     <tr>
                         <th><input type="checkbox" id="permSelectAll" title="Tümünü Seç"></th>
+                        <th>Sıra</th>
                         <th>Sicil No</th>
                         <th>Ad Soyad</th>
                         <th>Daire Başkanlığı</th>
@@ -50,6 +51,7 @@
                     {% set p = profiles.get(u.id) %}
                     <tr class="selectable-row">
                         <td><input class="row-select" type="checkbox" name="allowed_user_ids" value="{{ u.id }}" {% if u.id in current_allowed %}checked{% endif %}></td>
+                        <td class="row-order-cell"></td>
                         <td>{{ (p.sicil_no if p else "") or "-" }}</td>
                         <td>{{ (p.ad_soyad if p else "") or "-" }}</td>
                         <td class="filter-daire">{{ (p.daire_baskanligi if p else "") or "-" }}</td>
@@ -83,6 +85,19 @@
 
     function visibleRows() {
         return Array.from(table.querySelectorAll("tbody tr.selectable-row")).filter((tr) => tr.style.display !== "none");
+    }
+
+    function refreshOrderNumbers() {
+        let i = 1;
+        Array.from(table.querySelectorAll("tbody tr.selectable-row")).forEach((tr) => {
+            const cell = tr.querySelector(".row-order-cell");
+            if (!cell) return;
+            if (tr.style.display === "none") {
+                cell.textContent = "";
+            } else {
+                cell.textContent = String(i++);
+            }
+        });
     }
 
     function syncSelectAll() {
@@ -132,6 +147,7 @@
             const okS = !sube || s === sube;
             tr.style.display = (okD && okS) ? "" : "none";
         });
+        refreshOrderNumbers();
         syncSelectAll();
     }
 
@@ -156,6 +172,7 @@
 
     refreshFilterOptions();
     applyFilters();
+    refreshOrderNumbers();
 })();
 </script>
 {% endblock %}
