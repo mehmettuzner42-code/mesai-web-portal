@@ -223,6 +223,57 @@ table form {
     box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
 }
 
+.compare-chart {
+    display: grid;
+    gap: 8px;
+}
+
+.compare-row {
+    display: grid;
+    grid-template-columns: 320px 1fr 80px;
+    gap: 10px;
+    align-items: center;
+}
+
+.compare-label {
+    font-size: 13px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.compare-label span {
+    font-weight: 400;
+    color: #475569;
+}
+
+.compare-bar-wrap {
+    height: 18px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.compare-bar {
+    height: 100%;
+    border-radius: 999px;
+}
+
+.compare-bar.period {
+    background: linear-gradient(90deg, #2563eb, #38bdf8);
+}
+
+.compare-bar.year {
+    background: linear-gradient(90deg, #7c3aed, #c084fc);
+}
+
+.compare-value {
+    text-align: right;
+    font-weight: 700;
+    font-size: 13px;
+}
+
 .table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -406,6 +457,15 @@ code {
     .totals-grid {
         grid-template-columns: 1fr 1fr;
         gap: 8px;
+    }
+
+    .compare-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+    }
+
+    .compare-value {
+        text-align: left;
     }
 
     .totals-grid .card {

@@ -5,7 +5,9 @@
 </div>
 
 <div class="card">
-    <h3>Kullanıcı Listesi</h3>
+    <div class="header-row">
+        <a class="button-link" href="{{ url_for('admin_users_charts') }}">Grafik</a>
+    </div>
     <form method="post" action="{{ url_for('admin_export_selected_users_xlsx') }}">
         <div class="table-wrap recent-scroll">
             <table class="compact-table">

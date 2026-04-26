@@ -569,6 +569,116 @@ def admin_users():
     )
 
 
+@app.get("/admin/users/charts")
+@login_required
+@admin_required
+def admin_users_charts():
+    all_entries = OvertimeEntry.query.order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
+    years, default_year, period_options, default_start = build_period_options_for_entries(all_entries)
+    selected_year = request.args.get("year", type=int) or default_year
+    selected_period = request.args.get("period", "").strip()
+    active_start = default_start
+    if selected_period and "-" in selected_period:
+        try:
+            sy, sm = (int(x) for x in selected_period.split("-"))
+            if (sy, sm) in period_options:
+                active_start = (sy, sm)
+        except Exception:
+            pass
+    p_start, p_end = period_for_start(active_start[0], active_start[1])
+
+    users = User.query.order_by(User.email.asc()).all()
+    profiles = {p.user_id: p for p in UserProfile.query.all()}
+
+    period_agg_rows = (
+        db.session.query(
+            OvertimeEntry.user_id,
+            db.func.sum(OvertimeEntry.pct60),
+            db.func.sum(OvertimeEntry.pct15),
+            db.func.sum(OvertimeEntry.pazar),
+            db.func.sum(OvertimeEntry.bayram),
+        )
+        .filter(
+            OvertimeEntry.work_date >= p_start,
+            OvertimeEntry.work_date <= p_end,
+        )
+        .group_by(OvertimeEntry.user_id)
+        .all()
+    )
+    year_start = date(selected_year, 1, 1)
+    year_end = date(selected_year, 12, 31)
+    year_agg_rows = (
+        db.session.query(
+            OvertimeEntry.user_id,
+            db.func.sum(OvertimeEntry.pct60),
+            db.func.sum(OvertimeEntry.pct15),
+            db.func.sum(OvertimeEntry.pazar),
+            db.func.sum(OvertimeEntry.bayram),
+        )
+        .filter(
+            OvertimeEntry.work_date >= year_start,
+            OvertimeEntry.work_date <= year_end,
+        )
+        .group_by(OvertimeEntry.user_id)
+        .all()
+    )
+
+    period_agg = {
+        int(uid): {
+            "pct60": float(s60 or 0),
+            "pct15": float(s15 or 0),
+            "pazar": float(sp or 0),
+            "bayram": float(sb or 0),
+        }
+        for uid, s60, s15, sp, sb in period_agg_rows
+    }
+    year_agg = {
+        int(uid): {
+            "pct60": float(s60 or 0),
+            "pct15": float(s15 or 0),
+            "pazar": float(sp or 0),
+            "bayram": float(sb or 0),
+        }
+        for uid, s60, s15, sp, sb in year_agg_rows
+    }
+
+    rows = []
+    for u in users:
+        p = profiles.get(u.id) or UserProfile(user_id=u.id)
+        pa = period_agg.get(u.id, {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
+        ya = year_agg.get(u.id, {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
+        rows.append(
+            {
+                "email": u.email,
+                "name": p.ad_soyad or "-",
+                "period": pa,
+                "year": ya,
+                # Grafik metriği: saat bazlı karşılaştırma (%60 + %15)
+                "period_hours": pa["pct60"] + pa["pct15"],
+                "year_hours": ya["pct60"] + ya["pct15"],
+            }
+        )
+
+    rows_period = sorted(rows, key=lambda x: x["period_hours"], reverse=True)
+    rows_year = sorted(rows, key=lambda x: x["year_hours"], reverse=True)
+    max_period = max([r["period_hours"] for r in rows_period] + [1.0])
+    max_year = max([r["year_hours"] for r in rows_year] + [1.0])
+
+    return render_template(
+        "admin_users_charts.html",
+        rows_period=rows_period,
+        rows_year=rows_year,
+        max_period=max_period,
+        max_year=max_year,
+        years=years,
+        selected_year=selected_year,
+        period_options=period_options,
+        period_value=f"{active_start[0]:04d}-{active_start[1]:02d}",
+        period_start=p_start,
+        period_end=p_end,
+    )
+
+
 @app.get("/admin/impersonate/<int:target_user_id>")
 @login_required
 @admin_required
@@ -620,35 +730,127 @@ def admin_export_selected_users_xlsx():
     profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_(selected_ids)).all()}
     p_start, p_end = period_for_start(sy, sm)
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Toplu Rapor"
-    ws.append(["Kullanıcı E-posta", "Ad Soyad", "Sicil No", "Ekip Kodu", "Tarih", "Gün", "Başlama", "Bitiş", "%60", "%15", "Pazar", "Bayram", "Açıklama"])
-    for u in users:
+    template_candidates = [
+        os.path.join(os.path.dirname(__file__), "fazla_mesai_cizelge.xlsx"),
+        os.path.join(os.path.dirname(__file__), "sablon.xlsx"),
+        os.path.join(os.path.dirname(__file__), "..", "app", "src", "main", "assets", "sablon.xlsx"),
+    ]
+    template_path = next((p for p in template_candidates if os.path.exists(p)), "")
+    if not template_path:
+        flash("Toplu rapor şablonu bulunamadı (fazla_mesai_cizelge.xlsx).", "error")
+        return redirect(url_for("admin_users"))
+
+    wb = load_workbook(template_path)
+    base_ws = wb[wb.sheetnames[0]]
+
+    def build_slots(ws):
+        slots = []
+        for r in range(4, 206):
+            a = ws.cell(r, 1).value
+            d1 = str(ws.cell(r, 4).value or "").strip()
+            d2 = str(ws.cell(r + 1, 4).value or "").strip() if r + 1 <= 206 else ""
+            if isinstance(a, int) and d1 == "0.6" and d2 == "0.15":
+                slots.append((r, r + 1))
+        return slots
+
+    def build_day_col_map(ws, start_year, start_month):
+        # Şablonda E..AI aralığı 24..31 ve 1..23 gün kolonlarını taşır.
+        day_cols = []
+        for col in range(5, ws.max_column + 1):
+            v = ws.cell(3, col).value
+            if isinstance(v, int) and 1 <= v <= 31:
+                day_cols.append((col, v))
+        out = {}
+        cur_y, cur_m = start_year, start_month
+        prev_day = None
+        for col, day_num in day_cols:
+            if prev_day is not None and day_num < prev_day:
+                cur_y, cur_m = add_month(cur_y, cur_m)
+            try:
+                out[date(cur_y, cur_m, day_num).isoformat()] = col
+            except Exception:
+                pass
+            prev_day = day_num
+        return out
+
+    def fill_sheet_meta(ws, signer_profile, total60, total15, total_pazar, total_bayram):
+        months_upper = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"]
+        period_text = f"{months_upper[sm - 1]}-{months_upper[p_end.month - 1]}"
+        ws["D2"] = period_text
+        ws["B206"] = (
+            f"Yukarıda adı soyadı yazılı KOSKİPAŞ işçileri, {p_end.year} yılı {period_text} "
+            f"ayında toplam {fmt_num(total60)} saat %60'lık, {fmt_num(total15)} saat %15'lik, "
+            f"{fmt_num(total_pazar)} gün PAZAR ve {fmt_num(total_bayram)} gün BAYRAM olarak fazla çalışma yapmıştır."
+        )
+        ws["C210"] = signer_profile.sube_mudurlugu or "Ambarlar Şefi"
+        ws["C211"] = signer_profile.ad_soyad or ""
+
+    founder = session_login_user()
+    founder_profile = get_or_create_profile(founder.id) if founder else UserProfile(user_id=0)
+
+    slots = build_slots(base_ws)
+    if not slots:
+        flash("Şablon slot yapısı okunamadı.", "error")
+        return redirect(url_for("admin_users"))
+    page_size = len(slots)
+
+    grand_60 = 0.0
+    grand_15 = 0.0
+    grand_pazar = 0.0
+    grand_bayram = 0.0
+
+    for idx, u in enumerate(users):
+        page = idx // page_size
+        pos = idx % page_size
+        if page == 0:
+            ws = base_ws
+        else:
+            sheet_name = f"Sayfa{page + 1}"
+            ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.copy_worksheet(base_ws)
+            ws.title = sheet_name
+
+        row60, row15 = slots[pos]
+        day_col_map = build_day_col_map(ws, sy, sm)
         p = profiles.get(u.id) or UserProfile(user_id=u.id)
         _, _, rows = report_period_rows_for_export(u.id, sy, sm)
-        if not rows:
-            ws.append([u.email, p.ad_soyad, p.sicil_no, p.ekip_kodu, "", "", "", "", "", "", "", "", ""])
-            continue
-        for r in rows:
-            ws.append(
-                [
-                    u.email,
-                    p.ad_soyad,
-                    p.sicil_no,
-                    p.ekip_kodu,
-                    format_dmy(r["work_date"]),
-                    weekday_tr(r["work_date"]),
-                    r["start_time"],
-                    r["end_time"],
-                    fmt_num(r["pct60"]),
-                    fmt_num(r["pct15"]),
-                    fmt_num(r["pazar"]),
-                    fmt_num(r["bayram"]),
-                    r["description"],
-                ]
-            )
-        ws.append(["", "", "", "", "", "", "", "", "", "", "", "", ""])
+        rows_by_day = {r["work_date"].isoformat(): r for r in rows}
+
+        ws.cell(row=row60, column=2).value = p.sicil_no or ""
+        ws.cell(row=row60, column=3).value = p.ad_soyad or u.email
+
+        total60 = 0.0
+        total15 = 0.0
+        total_pazar = 0.0
+        total_bayram = 0.0
+
+        for day_iso, col in day_col_map.items():
+            r = rows_by_day.get(day_iso)
+            if not r:
+                continue
+            v60 = float(r.get("pct60", 0) or 0)
+            v15 = float(r.get("pct15", 0) or 0)
+            vp = float(r.get("pazar", 0) or 0)
+            vb = float(r.get("bayram", 0) or 0)
+            total60 += v60
+            total15 += v15
+            total_pazar += vp
+            total_bayram += vb
+            ws.cell(row=row60, column=col).value = v60 if abs(v60) > 1e-9 else None
+            ws.cell(row=row15, column=col).value = v15 if abs(v15) > 1e-9 else None
+
+        ws.cell(row=row60, column=36).value = total60 if abs(total60) > 1e-9 else None  # AJ
+        ws.cell(row=row15, column=36).value = total15 if abs(total15) > 1e-9 else None  # AJ
+        ws.cell(row=row60, column=37).value = total_pazar if abs(total_pazar) > 1e-9 else None  # AK
+        ws.cell(row=row60, column=38).value = total_bayram if abs(total_bayram) > 1e-9 else None  # AL
+
+        grand_60 += total60
+        grand_15 += total15
+        grand_pazar += total_pazar
+        grand_bayram += total_bayram
+
+    # Her sayfada dönem/açıklama/imza alanlarını güncelle
+    for ws in wb.worksheets:
+        fill_sheet_meta(ws, founder_profile, grand_60, grand_15, grand_pazar, grand_bayram)
 
     mem = io.BytesIO()
     wb.save(mem)
