@@ -210,11 +210,11 @@ table form {
 }
 
 .users-filter-grid {
-    grid-template-columns: 42px 90px 170px 1fr 1fr 120px 220px 86px;
+    grid-template-columns: repeat(8, minmax(40px, auto));
 }
 
 .perm-filter-grid {
-    grid-template-columns: 42px 90px 170px 1fr 1fr 120px 220px;
+    grid-template-columns: repeat(7, minmax(40px, auto));
 }
 
 .admin-filter-bar .filter-col-daire,
@@ -403,7 +403,6 @@ table {
     border-collapse: collapse;
     background: white;
     min-width: 900px;
-    table-layout: fixed;
 }
 
 th, td {

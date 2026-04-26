@@ -37,15 +37,6 @@
         </div>
         <div class="table-wrap recent-scroll">
             <table class="compact-table" id="permUsersTable">
-                <colgroup>
-                    <col style="width:42px">
-                    <col style="width:90px">
-                    <col style="width:170px">
-                    <col style="width:220px">
-                    <col style="width:220px">
-                    <col style="width:120px">
-                    <col style="width:220px">
-                </colgroup>
                 <thead>
                     <tr>
                         <th><input type="checkbox" id="permSelectAll" title="Tümünü Seç"></th>
@@ -85,12 +76,21 @@
     const selectAll = document.getElementById("permSelectAll");
     const filterDaire = document.getElementById("permFilterDaire");
     const filterSube = document.getElementById("permFilterSube");
+    const permFilterGrid = document.querySelector(".perm-filter-grid");
     if (!table || !selectAll || !filterDaire || !filterSube) return;
 
     function updateRowHighlight(checkbox) {
         const tr = checkbox.closest("tr");
         if (!tr) return;
         tr.classList.toggle("selected-row", checkbox.checked);
+    }
+
+    function syncFilterGridColumns() {
+        if (!permFilterGrid || !table) return;
+        const headCells = Array.from(table.querySelectorAll("thead tr:first-child th"));
+        if (!headCells.length) return;
+        const widths = headCells.map((th) => Math.round(th.getBoundingClientRect().width));
+        permFilterGrid.style.gridTemplateColumns = widths.map((w) => `${w}px`).join(" ");
     }
 
     function visibleRows() {
@@ -168,6 +168,8 @@
 
     refreshFilterOptions();
     applyFilters();
+    syncFilterGridColumns();
+    window.addEventListener("resize", syncFilterGridColumns);
 })();
 </script>
 {% endblock %}

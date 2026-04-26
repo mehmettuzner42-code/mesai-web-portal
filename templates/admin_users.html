@@ -31,16 +31,6 @@
         </div>
         <div class="table-wrap recent-scroll">
             <table class="compact-table" id="usersTable">
-                <colgroup>
-                    <col style="width:42px">
-                    <col style="width:90px">
-                    <col style="width:170px">
-                    <col style="width:220px">
-                    <col style="width:220px">
-                    <col style="width:120px">
-                    <col style="width:220px">
-                    <col style="width:86px">
-                </colgroup>
                 <thead>
                     <tr>
                         <th><input type="checkbox" id="usersSelectAll" title="Tümünü Seç"></th>
@@ -156,6 +146,7 @@
     const usersSelectAll = document.getElementById("usersSelectAll");
     const usersFilterDaire = document.getElementById("usersFilterDaire");
     const usersFilterSube = document.getElementById("usersFilterSube");
+    const usersFilterGrid = document.querySelector(".users-filter-grid");
 
     document.querySelectorAll(".row-options-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -190,6 +181,14 @@
         const tr = checkbox.closest("tr");
         if (!tr) return;
         tr.classList.toggle("selected-row", checkbox.checked);
+    }
+
+    function syncFilterGridColumns() {
+        if (!usersFilterGrid || !usersTable) return;
+        const headCells = Array.from(usersTable.querySelectorAll("thead tr:first-child th"));
+        if (!headCells.length) return;
+        const widths = headCells.map((th) => Math.round(th.getBoundingClientRect().width));
+        usersFilterGrid.style.gridTemplateColumns = widths.map((w) => `${w}px`).join(" ");
     }
 
     function visibleRows() {
@@ -267,6 +266,8 @@
 
     refreshFilterOptions();
     applyFilters();
+    syncFilterGridColumns();
+    window.addEventListener("resize", syncFilterGridColumns);
 })();
 </script>
 {% endblock %}
