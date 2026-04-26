@@ -331,7 +331,7 @@ def is_founder_user(user: User) -> bool:
 
 
 def founder_user_id() -> int:
-    u = User.query.filter(db.func.lower(User.email) == FOUNDER_EMAIL.lower()).first()
+    u = User.query.filter(db.func.lower(db.func.trim(User.email)) == FOUNDER_EMAIL.lower()).first()
     return int(u.id) if u else 0
 
 
@@ -651,14 +651,15 @@ def build_period_options_for_entries(entries):
 @admin_or_delegate_required
 def admin_users():
     login_user = session_login_user()
-    if not delegate_can(login_user, "users"):
-        flash("Kullanıcılar ekranını görme yetkiniz yok.", "error")
-        return redirect(url_for("dashboard"))
+    can_users_screen = delegate_can(login_user, "users")
+    can_charts_screen = delegate_can(login_user, "charts")
     allowed_ids = allowed_user_ids_for(login_user)
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
     # Tum kullanicilari profil ile birlikte listele
-    users_query = User.query.order_by(User.created_at.desc())
-    users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
+    users = []
+    if can_users_screen:
+        users_query = User.query.order_by(User.created_at.desc())
+        users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
     profiles = {p.user_id: p for p in UserProfile.query.all()}
     entry_counts = {
         uid: cnt
@@ -692,6 +693,8 @@ def admin_users():
     return render_template(
         "admin_users.html",
         rows=rows,
+        can_users_screen=can_users_screen,
+        can_charts_screen=can_charts_screen,
         years=years,
         selected_year=selected_year,
         period_options=period_options,
