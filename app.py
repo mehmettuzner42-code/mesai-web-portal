@@ -100,6 +100,12 @@ class OvertimeEntry(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class AppSetting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    setting_key = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    setting_value = db.Column(db.Text, default="", nullable=False)
+
+
 def fmt_num(value: float) -> str:
     if value is None:
         return ""
@@ -362,6 +368,20 @@ def get_or_create_profile(user_id: int):
     return p
 
 
+def get_setting_value(key: str, default_value: str = "") -> str:
+    row = AppSetting.query.filter_by(setting_key=key).first()
+    return row.setting_value if row and row.setting_value is not None else default_value
+
+
+def set_setting_value(key: str, value: str):
+    row = AppSetting.query.filter_by(setting_key=key).first()
+    if row:
+        row.setting_value = value
+    else:
+        row = AppSetting(setting_key=key, setting_value=value)
+        db.session.add(row)
+
+
 def entry_to_dict(entry: OvertimeEntry):
     return {
         "id": entry.id,
@@ -559,6 +579,15 @@ def admin_users():
 
     founder_entries = OvertimeEntry.query.filter_by(user_id=login_user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
     years, selected_year, period_options, active_start = build_period_options_for_entries(founder_entries)
+    sig_prefix = f"bulk_excel_sign_{login_user.id}"
+    sign_fields = {
+        "chef_title": get_setting_value(f"{sig_prefix}_chef_title", "Ambarlar Şefi"),
+        "chef_name": get_setting_value(f"{sig_prefix}_chef_name", ""),
+        "manager_title": get_setting_value(f"{sig_prefix}_manager_title", "Ambarlar Şube Müdürü"),
+        "manager_name": get_setting_value(f"{sig_prefix}_manager_name", ""),
+        "director_title": get_setting_value(f"{sig_prefix}_director_title", "Daire Başkanı"),
+        "director_name": get_setting_value(f"{sig_prefix}_director_name", ""),
+    }
     return render_template(
         "admin_users.html",
         rows=rows,
@@ -566,6 +595,7 @@ def admin_users():
         selected_year=selected_year,
         period_options=period_options,
         period_value=f"{active_start[0]:04d}-{active_start[1]:02d}",
+        sign_fields=sign_fields,
     )
 
 
@@ -730,6 +760,22 @@ def admin_export_selected_users_xlsx():
     profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_(selected_ids)).all()}
     p_start, p_end = period_for_start(sy, sm)
 
+    login_user = session_login_user()
+    sig_prefix = f"bulk_excel_sign_{login_user.id if login_user else 0}"
+    chef_title = request.form.get("chef_title", "").strip()
+    chef_name = request.form.get("chef_name", "").strip()
+    manager_title = request.form.get("manager_title", "").strip()
+    manager_name = request.form.get("manager_name", "").strip()
+    director_title = request.form.get("director_title", "").strip()
+    director_name = request.form.get("director_name", "").strip()
+    set_setting_value(f"{sig_prefix}_chef_title", chef_title)
+    set_setting_value(f"{sig_prefix}_chef_name", chef_name)
+    set_setting_value(f"{sig_prefix}_manager_title", manager_title)
+    set_setting_value(f"{sig_prefix}_manager_name", manager_name)
+    set_setting_value(f"{sig_prefix}_director_title", director_title)
+    set_setting_value(f"{sig_prefix}_director_name", director_name)
+    db.session.commit()
+
     template_candidates = [
         os.path.join(os.path.dirname(__file__), "fazla_mesai_cizelge.xlsx"),
         os.path.join(os.path.dirname(__file__), "sablon.xlsx"),
@@ -773,7 +819,7 @@ def admin_export_selected_users_xlsx():
             prev_day = day_num
         return out
 
-    def fill_sheet_meta(ws, signer_profile, total60, total15, total_pazar, total_bayram):
+    def fill_sheet_meta(ws, total60, total15, total_pazar, total_bayram):
         months_upper = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"]
         period_text = f"{months_upper[sm - 1]}-{months_upper[p_end.month - 1]}"
         ws["D2"] = period_text
@@ -782,11 +828,12 @@ def admin_export_selected_users_xlsx():
             f"ayında toplam {fmt_num(total60)} saat %60'lık, {fmt_num(total15)} saat %15'lik, "
             f"{fmt_num(total_pazar)} gün PAZAR ve {fmt_num(total_bayram)} gün BAYRAM olarak fazla çalışma yapmıştır."
         )
-        ws["C210"] = signer_profile.sube_mudurlugu or "Ambarlar Şefi"
-        ws["C211"] = signer_profile.ad_soyad or ""
-
-    founder = session_login_user()
-    founder_profile = get_or_create_profile(founder.id) if founder else UserProfile(user_id=0)
+        ws["C210"] = chef_title or "Ambarlar Şefi"
+        ws["C211"] = chef_name or ""
+        ws["K210"] = manager_title or "Ambarlar Şube Müdürü"
+        ws["K211"] = manager_name or ""
+        ws["AA210"] = director_title or "Daire Başkanı"
+        ws["AA211"] = director_name or ""
 
     slots = build_slots(base_ws)
     if not slots:
@@ -848,9 +895,18 @@ def admin_export_selected_users_xlsx():
         grand_pazar += total_pazar
         grand_bayram += total_bayram
 
+    total_pages = (len(users) + page_size - 1) // page_size
+    for page_idx in range(max(total_pages, 1)):
+        ws = wb.worksheets[page_idx]
+        used_in_page = max(0, min(page_size, len(users) - (page_idx * page_size)))
+        for slot_idx, (row60, row15) in enumerate(slots):
+            hidden = slot_idx >= used_in_page
+            ws.row_dimensions[row60].hidden = hidden
+            ws.row_dimensions[row15].hidden = hidden
+
     # Her sayfada dönem/açıklama/imza alanlarını güncelle
     for ws in wb.worksheets:
-        fill_sheet_meta(ws, founder_profile, grand_60, grand_15, grand_pazar, grand_bayram)
+        fill_sheet_meta(ws, grand_60, grand_15, grand_pazar, grand_bayram)
 
     mem = io.BytesIO()
     wb.save(mem)

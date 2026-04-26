@@ -195,6 +195,13 @@ table form {
     flex-wrap: wrap;
 }
 
+.admin-sign-grid {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
+    gap: 8px;
+}
+
 .row-menu {
     position: relative;
 }
@@ -462,6 +469,10 @@ code {
     .compare-row {
         grid-template-columns: 1fr;
         gap: 6px;
+    }
+
+    .admin-sign-grid {
+        grid-template-columns: 1fr;
     }
 
     .compare-value {

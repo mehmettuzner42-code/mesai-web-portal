@@ -1,13 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="header-row">
-    <h2>Tüm Kişiler</h2>
+    <a class="button-link" href="{{ url_for('admin_users_charts') }}">Grafik</a>
 </div>
 
 <div class="card">
-    <div class="header-row">
-        <a class="button-link" href="{{ url_for('admin_users_charts') }}">Grafik</a>
-    </div>
     <form method="post" action="{{ url_for('admin_export_selected_users_xlsx') }}">
         <div class="table-wrap recent-scroll">
             <table class="compact-table">
@@ -72,6 +69,26 @@
                 </select>
             </label>
             <button type="submit">Toplu Excel Raporu</button>
+        </div>
+        <div class="admin-sign-grid">
+            <label>C210 Şef Ünvan
+                <input type="text" name="chef_title" value="{{ sign_fields.chef_title }}">
+            </label>
+            <label>C211 Şef Ad Soyad
+                <input type="text" name="chef_name" value="{{ sign_fields.chef_name }}">
+            </label>
+            <label>K210 Müdür Ünvan
+                <input type="text" name="manager_title" value="{{ sign_fields.manager_title }}">
+            </label>
+            <label>K211 Müdür Ad Soyad
+                <input type="text" name="manager_name" value="{{ sign_fields.manager_name }}">
+            </label>
+            <label>AA210 Daire Başkanı Ünvan
+                <input type="text" name="director_title" value="{{ sign_fields.director_title }}">
+            </label>
+            <label>AA211 Daire Başkanı Ad Soyad
+                <input type="text" name="director_name" value="{{ sign_fields.director_name }}">
+            </label>
         </div>
     </form>
 </div>
