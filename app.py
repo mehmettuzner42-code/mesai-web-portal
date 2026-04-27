@@ -203,6 +203,21 @@ def calc_night_20_06(start_hhmm: str, end_hhmm: str):
     return total / 60.0
 
 
+def calc_lunch_12_13(start_hhmm: str, end_hhmm: str):
+    s = hhmm_to_minutes(start_hhmm)
+    e = hhmm_to_minutes(end_hhmm)
+    if s is None or e is None:
+        return None
+    if e <= s:
+        e += 1440
+    total = 0
+    max_day = (e // 1440) + 1
+    for k in range(max_day + 2):
+        d0 = k * 1440
+        total += overlap(s, e, d0 + 12 * 60, d0 + 13 * 60)
+    return total / 60.0
+
+
 def period_start_for_date(d: date) -> date:
     if d.day >= 24:
         return date(d.year, d.month, 24)
@@ -262,8 +277,21 @@ def day_defaults(target_date: date, end_time_override: str = None):
         end = end_time_override
     total = calc_total_hours(start, end) or 0.0
     night = calc_night_20_06(start, end) or 0.0
+    lunch = calc_lunch_12_13(start, end) or 0.0
+    net = max(0.0, total - lunch)
     if is_holiday or wd == 6:
-        pct60 = 0.0
+        # Pazar/Bayramda 8 saatten az (ogle arasi dusulmus) calisma %60'a yazilir.
+        # 8 saat ve ustunde 1 gun pazar/bayram + 8 saat uzeri %60 olur.
+        if net < 7.0:
+            pct60 = net
+            pazar = 0.0
+            bayram = 0.0
+        else:
+            pct60 = max(0.0, net - 8.0)
+            if is_holiday:
+                pazar, bayram = 0.0, 1.0
+            else:
+                pazar, bayram = 1.0, 0.0
     elif wd == 5:
         pct60 = max(0.0, total - 1.0)
     else:
@@ -1189,9 +1217,17 @@ def admin_export_selected_users_xlsx():
             v15 = float(r.get("pct15", 0) or 0)
             vp = float(r.get("pazar", 0) or 0)
             vb = float(r.get("bayram", 0) or 0)
-            # Gunluk tabloda Pazar/Bayram da ilgili gun hucrelerinde gorunsun.
-            day_display_60 = v60 if abs(v60) > 1e-9 else (vp + vb)
-            ws.cell(row=row60, column=col).value = day_display_60 if abs(day_display_60) > 1e-9 else None
+            # Gunluk tabloda:
+            # - Sadece pazar/bayram: 1
+            # - Pazar/bayram + ek saat: 1+ekSaat
+            # - Sadece %60: saat
+            day_marker = vp + vb
+            if day_marker > 0 and v60 > 0:
+                ws.cell(row=row60, column=col).value = f"{fmt_num(day_marker)}+{fmt_num(v60)}"
+            elif day_marker > 0:
+                ws.cell(row=row60, column=col).value = day_marker
+            else:
+                ws.cell(row=row60, column=col).value = v60 if abs(v60) > 1e-9 else None
             ws.cell(row=row15, column=col).value = v15 if abs(v15) > 1e-9 else None
             if abs(vb) > 1e-9:
                 holiday_day_isos.add(day_iso)
