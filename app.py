@@ -1169,6 +1169,7 @@ def admin_export_selected_users_xlsx():
     grand_15 = 0.0
     grand_pazar = 0.0
     grand_bayram = 0.0
+    holiday_day_isos = set()
 
     for idx, item in enumerate(export_rows):
         row60 = base_row + (idx * row_step)
@@ -1186,8 +1187,14 @@ def admin_export_selected_users_xlsx():
                 continue
             v60 = float(r.get("pct60", 0) or 0)
             v15 = float(r.get("pct15", 0) or 0)
-            ws.cell(row=row60, column=col).value = v60 if abs(v60) > 1e-9 else None
+            vp = float(r.get("pazar", 0) or 0)
+            vb = float(r.get("bayram", 0) or 0)
+            # Gunluk tabloda Pazar/Bayram da ilgili gun hucrelerinde gorunsun.
+            day_display_60 = v60 if abs(v60) > 1e-9 else (vp + vb)
+            ws.cell(row=row60, column=col).value = day_display_60 if abs(day_display_60) > 1e-9 else None
             ws.cell(row=row15, column=col).value = v15 if abs(v15) > 1e-9 else None
+            if abs(vb) > 1e-9:
+                holiday_day_isos.add(day_iso)
 
         total60 = float(item["total60"])
         total15 = float(item["total15"])
@@ -1243,7 +1250,9 @@ def admin_export_selected_users_xlsx():
             d = parse_date(day_iso)
         except Exception:
             continue
-        if d.weekday() in (5, 6):
+        is_weekend = d.weekday() in (5, 6)
+        is_official_holiday = day_iso in holiday_day_isos
+        if is_weekend or is_official_holiday:
             for r in range(6, 208):
                 ws.cell(row=r, column=col).fill = weekend_fill
 
