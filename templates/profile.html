@@ -7,10 +7,17 @@
 <div class="card">
     <form method="post" class="grid two-col">
         <label class="full">Daire Başkanlığı
-            <input name="daire_baskanligi" value="{{ profile.daire_baskanligi }}">
+            <select name="daire_baskanligi">
+                <option value="Abone İşleri Dairesi Başkanlığı" {% if profile.daire_baskanligi == "Abone İşleri Dairesi Başkanlığı" %}selected{% endif %}>Abone İşleri Dairesi Başkanlığı</option>
+            </select>
         </label>
         <label class="full">Şube Müdürlüğü
-            <input name="sube_mudurlugu" value="{{ profile.sube_mudurlugu }}">
+            <select name="sube_mudurlugu">
+                <option value="Sayaç İşleri Şube Müdürlüğü" {% if profile.sube_mudurlugu == "Sayaç İşleri Şube Müdürlüğü" %}selected{% endif %}>Sayaç İşleri Şube Müdürlüğü</option>
+                <option value="Abone İşleri Şube Müdürlüğü" {% if profile.sube_mudurlugu == "Abone İşleri Şube Müdürlüğü" %}selected{% endif %}>Abone İşleri Şube Müdürlüğü</option>
+                <option value="Müşteri Hizmetleri Şube Müdürlüğü" {% if profile.sube_mudurlugu == "Müşteri Hizmetleri Şube Müdürlüğü" %}selected{% endif %}>Müşteri Hizmetleri Şube Müdürlüğü</option>
+                <option value="Tahakkuk İşleri Şube Müdürlüğü" {% if profile.sube_mudurlugu == "Tahakkuk İşleri Şube Müdürlüğü" %}selected{% endif %}>Tahakkuk İşleri Şube Müdürlüğü</option>
+            </select>
         </label>
         <label>Ad Soyad
             <input name="ad_soyad" value="{{ profile.ad_soyad }}">
