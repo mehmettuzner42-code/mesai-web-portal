@@ -218,6 +218,14 @@ def calc_lunch_12_13(start_hhmm: str, end_hhmm: str):
     return total / 60.0
 
 
+def tr_upper(text: str) -> str:
+    # Turkce buyuk harf donusumu: i->I degil, i->I ve ı->I kurallarini dogru uygular.
+    if text is None:
+        return ""
+    trans = str.maketrans({"i": "İ", "ı": "I"})
+    return str(text).translate(trans).upper()
+
+
 def period_start_for_date(d: date) -> date:
     if d.day >= 24:
         return date(d.year, d.month, 24)
@@ -1259,7 +1267,7 @@ def admin_export_selected_users_xlsx():
         ws[cell_ref].value = value
 
     first_profile = export_rows[0]["profile"]
-    set_cell_value_safe("B2", (first_profile.sube_mudurlugu or "").upper())
+    set_cell_value_safe("B2", tr_upper(first_profile.sube_mudurlugu or ""))
     set_cell_value_safe("G5", first_month_upper)
     set_cell_value_safe("O5", second_month_upper)
 
