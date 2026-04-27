@@ -14,6 +14,7 @@ from functools import wraps
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import PatternFill
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from werkzeug.security import check_password_hash, generate_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -1075,7 +1076,7 @@ def admin_export_selected_users_xlsx():
         flash("Dönem formatı hatalı.", "error")
         return redirect(url_for("admin_users"))
 
-    users = User.query.filter(User.id.in_(selected_ids)).order_by(User.email.asc()).all()
+    users = User.query.filter(User.id.in_(selected_ids)).all()
     profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_(selected_ids)).all()}
     p_start, p_end = period_for_start(sy, sm)
 
@@ -1095,98 +1096,88 @@ def admin_export_selected_users_xlsx():
     db.session.commit()
 
     template_candidates = [
+        os.path.join(os.path.dirname(__file__), "Toplu_Mesai_Sablon.xlsx"),
         os.path.join(os.path.dirname(__file__), "fazla_mesai_cizelge.xlsx"),
         os.path.join(os.path.dirname(__file__), "sablon.xlsx"),
         os.path.join(os.path.dirname(__file__), "..", "app", "src", "main", "assets", "sablon.xlsx"),
     ]
     template_path = next((p for p in template_candidates if os.path.exists(p)), "")
     if not template_path:
-        flash("Toplu rapor şablonu bulunamadı (fazla_mesai_cizelge.xlsx).", "error")
+        flash("Toplu rapor şablonu bulunamadı (Toplu_Mesai_Sablon.xlsx).", "error")
         return redirect(url_for("admin_users"))
-
     wb = load_workbook(template_path)
-    base_ws = wb[wb.sheetnames[0]]
+    ws = wb[wb.sheetnames[0]]
 
-    def build_slots(ws):
-        slots = []
-        for r in range(4, 206):
-            a = ws.cell(r, 1).value
-            d1 = str(ws.cell(r, 4).value or "").strip()
-            d2 = str(ws.cell(r + 1, 4).value or "").strip() if r + 1 <= 206 else ""
-            if isinstance(a, int) and d1 == "0.6" and d2 == "0.15":
-                slots.append((r, r + 1))
-        return slots
+    month_names_upper = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"]
+    first_month_upper = month_names_upper[sm - 1]
+    second_month_upper = month_names_upper[p_end.month - 1]
+    period_year_value = p_end.year
 
-    def build_day_col_map(ws, start_year, start_month):
-        # Şablonda E..AI aralığı 24..31 ve 1..23 gün kolonlarını taşır.
-        day_cols = []
-        for col in range(5, ws.max_column + 1):
-            v = ws.cell(3, col).value
-            if isinstance(v, int) and 1 <= v <= 31:
-                day_cols.append((col, v))
-        out = {}
-        cur_y, cur_m = start_year, start_month
-        prev_day = None
-        for col, day_num in day_cols:
-            if prev_day is not None and day_num < prev_day:
-                cur_y, cur_m = add_month(cur_y, cur_m)
-            try:
-                out[date(cur_y, cur_m, day_num).isoformat()] = col
-            except Exception:
-                pass
-            prev_day = day_num
-        return out
+    # G..AK (7..37) kolonları: 24..31 + 1..23
+    day_numbers_in_sheet = list(range(24, 32)) + list(range(1, 24))
+    day_col_map = {}
+    cur_y, cur_m = sy, sm
+    prev_day_num = None
+    for idx, day_num in enumerate(day_numbers_in_sheet):
+        col = 7 + idx
+        if prev_day_num is not None and day_num < prev_day_num:
+            cur_y, cur_m = add_month(cur_y, cur_m)
+        try:
+            day_col_map[date(cur_y, cur_m, day_num).isoformat()] = col
+        except Exception:
+            pass
+        prev_day_num = day_num
 
-    def fill_sheet_meta(ws, total60, total15, total_pazar, total_bayram):
-        months_upper = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"]
-        period_text = f"{months_upper[sm - 1]}-{months_upper[p_end.month - 1]}"
-        ws["D2"] = period_text
-        ws["B206"] = (
-            f"Yukarıda adı soyadı yazılı KOSKİPAŞ işçileri, {p_end.year} yılı {period_text} "
-            f"ayında toplam {fmt_num(total60)} saat %60'lık, {fmt_num(total15)} saat %15'lik, "
-            f"{fmt_num(total_pazar)} gün PAZAR ve {fmt_num(total_bayram)} gün BAYRAM olarak fazla çalışma yapmıştır."
+    export_rows = []
+    for u in users:
+        p = profiles.get(u.id) or UserProfile(user_id=u.id)
+        _, _, rows = report_period_rows_for_export(u.id, sy, sm)
+        total60 = sum(float(r.get("pct60", 0) or 0) for r in rows)
+        total15 = sum(float(r.get("pct15", 0) or 0) for r in rows)
+        total_pazar = sum(float(r.get("pazar", 0) or 0) for r in rows)
+        total_bayram = sum(float(r.get("bayram", 0) or 0) for r in rows)
+        if abs(total60) < 1e-9 and abs(total15) < 1e-9 and abs(total_pazar) < 1e-9 and abs(total_bayram) < 1e-9:
+            continue
+        export_rows.append(
+            {
+                "user": u,
+                "profile": p,
+                "rows": rows,
+                "total60": total60,
+                "total15": total15,
+                "total_pazar": total_pazar,
+                "total_bayram": total_bayram,
+                "name_sort": (p.ad_soyad or u.email or "").strip().lower(),
+            }
         )
-        ws["C210"] = chef_title or "Ambarlar Şefi"
-        ws["C211"] = chef_name or ""
-        ws["K210"] = manager_title or "Ambarlar Şube Müdürü"
-        ws["K211"] = manager_name or ""
-        ws["AA210"] = director_title or "Daire Başkanı"
-        ws["AA211"] = director_name or ""
 
-    slots = build_slots(base_ws)
-    if not slots:
-        flash("Şablon slot yapısı okunamadı.", "error")
+    export_rows.sort(key=lambda x: x["name_sort"])
+    if not export_rows:
+        flash("Seçtiğiniz kişilerde bu dönem için mesai kaydı bulunamadı.", "error")
         return redirect(url_for("admin_users"))
-    page_size = len(slots)
+
+    base_row = 8
+    max_row_for_people = 206
+    row_step = 2
+    person_capacity = ((max_row_for_people - base_row) // row_step) + 1
+    if len(export_rows) > person_capacity:
+        flash(f"Şablon en fazla {person_capacity} personel destekliyor.", "error")
+        return redirect(url_for("admin_users"))
 
     grand_60 = 0.0
     grand_15 = 0.0
     grand_pazar = 0.0
     grand_bayram = 0.0
 
-    for idx, u in enumerate(users):
-        page = idx // page_size
-        pos = idx % page_size
-        if page == 0:
-            ws = base_ws
-        else:
-            sheet_name = f"Sayfa{page + 1}"
-            ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.copy_worksheet(base_ws)
-            ws.title = sheet_name
+    for idx, item in enumerate(export_rows):
+        row60 = base_row + (idx * row_step)
+        row15 = row60 + 1
+        p = item["profile"]
+        u = item["user"]
+        rows_by_day = {r["work_date"].isoformat(): r for r in item["rows"]}
 
-        row60, row15 = slots[pos]
-        day_col_map = build_day_col_map(ws, sy, sm)
-        p = profiles.get(u.id) or UserProfile(user_id=u.id)
-        _, _, rows = report_period_rows_for_export(u.id, sy, sm)
-        rows_by_day = {r["work_date"].isoformat(): r for r in rows}
-
-        ws.cell(row=row60, column=2).value = p.sicil_no or ""
-        ws.cell(row=row60, column=3).value = p.ad_soyad or u.email
-
-        total60 = 0.0
-        total15 = 0.0
-        total_pazar = 0.0
-        total_bayram = 0.0
+        ws.cell(row=row60, column=3).value = p.sicil_no or ""  # C
+        ws.cell(row=row60, column=4).value = p.ad_soyad or u.email  # D
 
         for day_iso, col in day_col_map.items():
             r = rows_by_day.get(day_iso)
@@ -1194,37 +1185,54 @@ def admin_export_selected_users_xlsx():
                 continue
             v60 = float(r.get("pct60", 0) or 0)
             v15 = float(r.get("pct15", 0) or 0)
-            vp = float(r.get("pazar", 0) or 0)
-            vb = float(r.get("bayram", 0) or 0)
-            total60 += v60
-            total15 += v15
-            total_pazar += vp
-            total_bayram += vb
             ws.cell(row=row60, column=col).value = v60 if abs(v60) > 1e-9 else None
             ws.cell(row=row15, column=col).value = v15 if abs(v15) > 1e-9 else None
 
-        ws.cell(row=row60, column=36).value = total60 if abs(total60) > 1e-9 else None  # AJ
-        ws.cell(row=row15, column=36).value = total15 if abs(total15) > 1e-9 else None  # AJ
-        ws.cell(row=row60, column=37).value = total_pazar if abs(total_pazar) > 1e-9 else None  # AK
-        ws.cell(row=row60, column=38).value = total_bayram if abs(total_bayram) > 1e-9 else None  # AL
+        total60 = float(item["total60"])
+        total15 = float(item["total15"])
+        total_pazar = float(item["total_pazar"])
+        total_bayram = float(item["total_bayram"])
+        ws.cell(row=row60, column=38).value = total60 if abs(total60) > 1e-9 else None  # AL
+        ws.cell(row=row15, column=38).value = total15 if abs(total15) > 1e-9 else None  # AL
+        ws.cell(row=row60, column=39).value = total_pazar if abs(total_pazar) > 1e-9 else None  # AM
+        ws.cell(row=row60, column=40).value = total_bayram if abs(total_bayram) > 1e-9 else None  # AN
 
         grand_60 += total60
         grand_15 += total15
         grand_pazar += total_pazar
         grand_bayram += total_bayram
 
-    total_pages = (len(users) + page_size - 1) // page_size
-    for page_idx in range(max(total_pages, 1)):
-        ws = wb.worksheets[page_idx]
-        used_in_page = max(0, min(page_size, len(users) - (page_idx * page_size)))
-        for slot_idx, (row60, row15) in enumerate(slots):
-            hidden = slot_idx >= used_in_page
-            ws.row_dimensions[row60].hidden = hidden
-            ws.row_dimensions[row15].hidden = hidden
+    first_profile = export_rows[0]["profile"]
+    ws["B2"] = (first_profile.sube_mudurlugu or "").upper()
+    ws["G5"] = first_month_upper
+    ws["O5"] = second_month_upper
 
-    # Her sayfada dönem/açıklama/imza alanlarını güncelle
-    for ws in wb.worksheets:
-        fill_sheet_meta(ws, grand_60, grand_15, grand_pazar, grand_bayram)
+    people_count = len(export_rows)
+    ws["D209"] = (
+        f"Yukarıda adı soyadı yazılı {people_count} işçi, {period_year_value} yılı {first_month_upper} ve {second_month_upper} ayında toplam "
+        f"{fmt_num(grand_60)} saat %60'lık, {fmt_num(grand_15)} saat %15'lik, {fmt_num(grand_pazar)} gün PAZAR, "
+        f"{fmt_num(grand_bayram)} gün BAYRAM, olarak fazla çalışma yapmıştır."
+    )
+    ws["D213"] = chef_title or ""
+    ws["D214"] = chef_name or ""
+    ws["Q213"] = manager_title or ""
+    ws["Q214"] = manager_name or ""
+    ws["AC213"] = director_title or ""
+    ws["AC214"] = director_name or ""
+
+    last_used_row60 = base_row + ((people_count - 1) * row_step)
+    for r in range(last_used_row60 + 2, 208):
+        ws.row_dimensions[r].hidden = True
+
+    weekend_fill = PatternFill(fill_type="solid", start_color="FFD9D9D9", end_color="FFD9D9D9")
+    for day_iso, col in day_col_map.items():
+        try:
+            d = parse_date(day_iso)
+        except Exception:
+            continue
+        if d.weekday() in (5, 6):
+            for r in range(6, 208):
+                ws.cell(row=r, column=col).fill = weekend_fill
 
     mem = io.BytesIO()
     wb.save(mem)
