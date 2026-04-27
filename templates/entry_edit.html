@@ -81,6 +81,20 @@ function recalcFrom60() {
         })
         .catch(() => {});
 }
+function recalcFromEndTime() {
+    const d = document.getElementById("work_date").value;
+    const end = document.getElementById("end_time").value;
+    if (!d || !end) return;
+    fetch(`/api/day-defaults?date=${encodeURIComponent(d)}&endTime=${encodeURIComponent(end)}`)
+        .then(r => r.json())
+        .then(v => {
+            document.getElementById("pct60").value = formatOut(v.pct60);
+            document.getElementById("pct15").value = formatOut(v.pct15);
+            document.getElementById("pazar").value = formatOut(v.pazar);
+            document.getElementById("bayram").value = formatOut(v.bayram);
+        })
+        .catch(() => {});
+}
 function formatOut(v){
     if (v === null || v === undefined) return "";
     const n = Number(v);
@@ -90,5 +104,10 @@ function formatOut(v){
 }
 document.getElementById("pct60").addEventListener("change", recalcFrom60);
 document.getElementById("pct60").addEventListener("input", recalcFrom60);
+document.getElementById("work_date").addEventListener("change", recalcFromEndTime);
+document.getElementById("start_time").addEventListener("change", recalcFromEndTime);
+document.getElementById("start_time").addEventListener("input", recalcFromEndTime);
+document.getElementById("end_time").addEventListener("change", recalcFromEndTime);
+document.getElementById("end_time").addEventListener("input", recalcFromEndTime);
 </script>
 {% endblock %}
