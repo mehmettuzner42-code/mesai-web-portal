@@ -160,6 +160,33 @@ button:hover {
     font-size: 12px;
 }
 
+.edit-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.edit-actions .button-link {
+    margin: 0;
+}
+
+.danger-link {
+    background: #dc2626;
+}
+
+.danger-link:hover {
+    background: #991b1b;
+}
+
+.success-btn {
+    background: #16a34a;
+}
+
+.success-btn:hover {
+    background: #15803d;
+}
+
 /* Son Kayıtlar / Dönem Kayıtları: Sil ve Düzenle aynı yükseklikte, yazı biraz daha küçük */
 table .button-link.mini,
 table button.danger {
