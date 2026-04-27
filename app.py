@@ -13,6 +13,7 @@ from functools import wraps
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
+from openpyxl.cell.cell import MergedCell
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -1202,23 +1203,35 @@ def admin_export_selected_users_xlsx():
         grand_pazar += total_pazar
         grand_bayram += total_bayram
 
+    def set_cell_value_safe(cell_ref: str, value):
+        cell = ws[cell_ref]
+        if not isinstance(cell, MergedCell):
+            cell.value = value
+            return
+        for merged_range in ws.merged_cells.ranges:
+            if cell_ref in merged_range:
+                ws.cell(row=merged_range.min_row, column=merged_range.min_col).value = value
+                return
+        # Beklenmeyen durumda yine de deneyelim
+        ws[cell_ref].value = value
+
     first_profile = export_rows[0]["profile"]
-    ws["B2"] = (first_profile.sube_mudurlugu or "").upper()
-    ws["G5"] = first_month_upper
-    ws["O5"] = second_month_upper
+    set_cell_value_safe("B2", (first_profile.sube_mudurlugu or "").upper())
+    set_cell_value_safe("G5", first_month_upper)
+    set_cell_value_safe("O5", second_month_upper)
 
     people_count = len(export_rows)
-    ws["D209"] = (
+    set_cell_value_safe("D209", (
         f"Yukarıda adı soyadı yazılı {people_count} işçi, {period_year_value} yılı {first_month_upper} ve {second_month_upper} ayında toplam "
         f"{fmt_num(grand_60)} saat %60'lık, {fmt_num(grand_15)} saat %15'lik, {fmt_num(grand_pazar)} gün PAZAR, "
         f"{fmt_num(grand_bayram)} gün BAYRAM, olarak fazla çalışma yapmıştır."
-    )
-    ws["D213"] = chef_title or ""
-    ws["D214"] = chef_name or ""
-    ws["Q213"] = manager_title or ""
-    ws["Q214"] = manager_name or ""
-    ws["AC213"] = director_title or ""
-    ws["AC214"] = director_name or ""
+    ))
+    set_cell_value_safe("D213", chef_title or "")
+    set_cell_value_safe("D214", chef_name or "")
+    set_cell_value_safe("Q213", manager_title or "")
+    set_cell_value_safe("Q214", manager_name or "")
+    set_cell_value_safe("AC213", director_title or "")
+    set_cell_value_safe("AC214", director_name or "")
 
     last_used_row60 = base_row + ((people_count - 1) * row_step)
     for r in range(last_used_row60 + 2, 208):
