@@ -969,6 +969,9 @@ def admin_users_charts_export_xlsx():
             chart.legend = None
             chart.dataLabels = DataLabelList()
             chart.dataLabels.showVal = True
+            chart.dataLabels.showSerName = False
+            chart.dataLabels.showCatName = False
+            chart.dataLabels.showLegendKey = False
             chart.dataLabels.dLblPos = "outEnd"
             data_ref = Reference(ws, min_col=2, min_row=2, max_row=row_num - 1)
             cats_ref = Reference(ws, min_col=1, min_row=3, max_row=row_num - 1)
