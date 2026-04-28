@@ -5,25 +5,97 @@
 </div>
 
 <div class="card">
-    <form method="get" action="{{ url_for('admin_users_charts') }}" class="admin-export-bar">
-        <label>Yıl
-            <select name="year">
-                {% for y in years %}
-                <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
-                {% endfor %}
-            </select>
-        </label>
-        <label>Dönem
-            <select name="period">
-                {% for sy, sm in period_options %}
-                {% set em = 1 if sm == 12 else sm + 1 %}
-                <option value="{{ sy }}-{{ '%02d'|format(sm) }}" {% if period_value == (sy ~ '-' ~ ('%02d'|format(sm))) %}selected{% endif %}>
-                    {{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][sm-1] }}/{{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][em-1] }}
-                </option>
-                {% endfor %}
-            </select>
-        </label>
-        <button type="submit">Grafiği Güncelle</button>
+    <form method="get" action="{{ url_for('admin_users_charts') }}" id="chartsFilterForm">
+        {% if can_view_filters %}
+        <div class="admin-filter-bar">
+            <div class="filter-col-daire">
+                <label>Daire Başkanlığı
+                    <select id="chartsDaireFilter">
+                        <option value="">Tümü</option>
+                        {% for u in all_users %}
+                        {% set p = profiles.get(u.id) %}
+                        {% set daire = (p.daire_baskanligi if p and p.daire_baskanligi else '') %}
+                        {% if daire %}
+                        <option value="{{ daire }}">{{ daire }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+            <div class="filter-col-sube">
+                <label>Şube Müdürlüğü
+                    <select id="chartsSubeFilter">
+                        <option value="">Tümü</option>
+                        {% for u in all_users %}
+                        {% set p = profiles.get(u.id) %}
+                        {% set sube = (p.sube_mudurlugu if p and p.sube_mudurlugu else '') %}
+                        {% if sube %}
+                        <option value="{{ sube }}">{{ sube }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+        </div>
+        {% endif %}
+
+        <div style="margin-top: 12px; overflow-x: auto;">
+            <table class="compact-table" id="chartsUsersTable">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="chartsSelectAll"></th>
+                        <th>Daire Başkanlığı</th>
+                        <th>Şube Müdürlüğü</th>
+                        <th>Ad Soyad</th>
+                        <th>Sicil No</th>
+                        <th>Ekip Kodu</th>
+                        <th>E-posta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in all_users %}
+                    {% set p = profiles.get(u.id) %}
+                    <tr data-daire="{{ p.daire_baskanligi if p and p.daire_baskanligi else '' }}" data-sube="{{ p.sube_mudurlugu if p and p.sube_mudurlugu else '' }}">
+                        <td><input type="checkbox" class="charts-user-checkbox" name="selected_user_ids" value="{{ u.id }}" {% if u.id in selected_user_ids %}checked{% endif %}></td>
+                        <td>{{ p.daire_baskanligi if p and p.daire_baskanligi else '-' }}</td>
+                        <td>{{ p.sube_mudurlugu if p and p.sube_mudurlugu else '-' }}</td>
+                        <td>{{ p.ad_soyad if p and p.ad_soyad else '-' }}</td>
+                        <td>{{ p.sicil_no if p and p.sicil_no else '-' }}</td>
+                        <td>{{ p.ekip_kodu if p and p.ekip_kodu else '-' }}</td>
+                        <td>{{ u.email }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7">Kayıtlı kullanıcı yok.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="admin-export-bar" style="margin-top: 12px;">
+            <label>Yıl
+                <select name="year" id="chartsYear">
+                    {% for y in years %}
+                    <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Dönem
+                <select name="period" id="chartsPeriod">
+                    {% for sy, sm in period_options %}
+                    {% set em = 1 if sm == 12 else sm + 1 %}
+                    <option value="{{ sy }}-{{ '%02d'|format(sm) }}" {% if period_value == (sy ~ '-' ~ ('%02d'|format(sm))) %}selected{% endif %}>
+                        {{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][sm-1] }}/{{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][em-1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button type="submit">Grafiği Güncelle</button>
+            <button type="button" class="success-btn" id="chartsExportBtn">Excele Aktar</button>
+        </div>
+    </form>
+    <form method="post" action="{{ url_for('admin_users_charts_export_xlsx') }}" id="chartsExportForm" style="display:none;">
+        <input type="hidden" name="year" id="exportYear">
+        <input type="hidden" name="period" id="exportPeriod">
     </form>
 </div>
 
@@ -108,4 +180,92 @@
         {% endfor %}
     </div>
 </div>
+
+<script>
+(function() {
+    const daireFilter = document.getElementById("chartsDaireFilter");
+    const subeFilter = document.getElementById("chartsSubeFilter");
+    const selectAll = document.getElementById("chartsSelectAll");
+    const rows = Array.from(document.querySelectorAll("#chartsUsersTable tbody tr"));
+    const checkboxes = Array.from(document.querySelectorAll(".charts-user-checkbox"));
+    const exportBtn = document.getElementById("chartsExportBtn");
+    const exportForm = document.getElementById("chartsExportForm");
+    const exportYear = document.getElementById("exportYear");
+    const exportPeriod = document.getElementById("exportPeriod");
+    const chartsYear = document.getElementById("chartsYear");
+    const chartsPeriod = document.getElementById("chartsPeriod");
+
+    function uniqueSelectValues(selectEl) {
+        const seen = new Set();
+        const opts = Array.from(selectEl.options);
+        opts.forEach((opt) => {
+            const val = opt.value;
+            if (!val) return;
+            if (seen.has(val)) {
+                opt.remove();
+            } else {
+                seen.add(val);
+            }
+        });
+    }
+
+    function applyFilters() {
+        const selectedDaire = (daireFilter.value || "").trim();
+        const selectedSube = (subeFilter.value || "").trim();
+        rows.forEach((row) => {
+            const rowDaire = (row.getAttribute("data-daire") || "").trim();
+            const rowSube = (row.getAttribute("data-sube") || "").trim();
+            const daireOk = !selectedDaire || rowDaire === selectedDaire;
+            const subeOk = !selectedSube || rowSube === selectedSube;
+            row.style.display = (daireOk && subeOk) ? "" : "none";
+        });
+        updateSelectAllState();
+    }
+
+    function visibleCheckboxes() {
+        return rows
+            .filter((row) => row.style.display !== "none")
+            .map((row) => row.querySelector(".charts-user-checkbox"))
+            .filter((cb) => !!cb);
+    }
+
+    function updateSelectAllState() {
+        const visible = visibleCheckboxes();
+        if (!visible.length) {
+            selectAll.checked = false;
+            return;
+        }
+        selectAll.checked = visible.every((cb) => cb.checked);
+    }
+
+    if (daireFilter && subeFilter) {
+        uniqueSelectValues(daireFilter);
+        uniqueSelectValues(subeFilter);
+        applyFilters();
+        daireFilter.addEventListener("change", applyFilters);
+        subeFilter.addEventListener("change", applyFilters);
+    } else {
+        rows.forEach((row) => { row.style.display = ""; });
+    }
+
+    selectAll.addEventListener("change", function() {
+        visibleCheckboxes().forEach((cb) => { cb.checked = selectAll.checked; });
+    });
+    checkboxes.forEach((cb) => cb.addEventListener("change", updateSelectAllState));
+
+    exportBtn.addEventListener("click", function() {
+        exportForm.querySelectorAll('input[name="selected_user_ids"]').forEach((n) => n.remove());
+        exportYear.value = chartsYear.value;
+        exportPeriod.value = chartsPeriod.value;
+        checkboxes.filter((cb) => cb.checked).forEach((cb) => {
+            const hidden = document.createElement("input");
+            hidden.type = "hidden";
+            hidden.name = "selected_user_ids";
+            hidden.value = cb.value;
+            exportForm.appendChild(hidden);
+        });
+        exportForm.submit();
+    });
+})();
+</script>
 {% endblock %}

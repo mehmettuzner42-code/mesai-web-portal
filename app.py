@@ -749,6 +749,7 @@ def admin_users_charts():
     years, default_year, period_options, default_start = build_period_options_for_entries(all_entries)
     selected_year = request.args.get("year", type=int) or default_year
     selected_period = request.args.get("period", "").strip()
+    selected_user_ids = {int(v) for v in request.args.getlist("selected_user_ids") if str(v).isdigit()}
     active_start = default_start
     if selected_period and "-" in selected_period:
         try:
@@ -761,6 +762,8 @@ def admin_users_charts():
 
     users_query = User.query.order_by(User.email.asc())
     users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
+    if selected_user_ids:
+        users = [u for u in users if u.id in selected_user_ids]
     profiles = {p.user_id: p for p in UserProfile.query.all()}
 
     period_agg_rows = (
@@ -835,6 +838,10 @@ def admin_users_charts():
 
     return render_template(
         "admin_users_charts.html",
+        all_users=users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all(),
+        profiles=profiles,
+        selected_user_ids=selected_user_ids,
+        can_view_filters=delegate_can(login_user, "filters"),
         rows_period=rows_period,
         rows_year=rows_year,
         rows_year_pazar=rows_year_pazar,
@@ -852,6 +859,113 @@ def admin_users_charts():
         format_dmy=format_dmy,
         year_total_pazar=year_total_pazar,
         year_total_bayram=year_total_bayram,
+    )
+
+
+@app.post("/admin/users/charts/export.xlsx")
+@login_required
+@admin_or_delegate_required
+def admin_users_charts_export_xlsx():
+    login_user = session_login_user()
+    if not delegate_can(login_user, "charts"):
+        flash("Grafik ekranını görme yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    allowed_ids = allowed_user_ids_for(login_user)
+    selected_user_ids = {int(v) for v in request.form.getlist("selected_user_ids") if str(v).isdigit()}
+
+    entries_query = OvertimeEntry.query.order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc())
+    all_entries = entries_query.all() if allowed_ids is None else entries_query.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0])).all()
+    years, default_year, period_options, default_start = build_period_options_for_entries(all_entries)
+    selected_year = request.form.get("year", type=int) or default_year
+    selected_period = request.form.get("period", "").strip()
+    active_start = default_start
+    if selected_period and "-" in selected_period:
+        try:
+            sy, sm = (int(x) for x in selected_period.split("-"))
+            if (sy, sm) in period_options:
+                active_start = (sy, sm)
+        except Exception:
+            pass
+    p_start, p_end = period_for_start(active_start[0], active_start[1])
+
+    users_query = User.query.order_by(User.email.asc())
+    users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
+    if selected_user_ids:
+        users = [u for u in users if u.id in selected_user_ids]
+    profiles = {p.user_id: p for p in UserProfile.query.all()}
+
+    period_agg_rows = (
+        db.session.query(
+            OvertimeEntry.user_id,
+            db.func.sum(OvertimeEntry.pct60),
+            db.func.sum(OvertimeEntry.pct15),
+            db.func.sum(OvertimeEntry.pazar),
+            db.func.sum(OvertimeEntry.bayram),
+        )
+        .filter(
+            OvertimeEntry.work_date >= p_start,
+            OvertimeEntry.work_date <= p_end,
+        )
+        .group_by(OvertimeEntry.user_id)
+        .all()
+    )
+    all_year_entries = OvertimeEntry.query.all()
+    year_agg = {}
+    for e in all_year_entries:
+        ps = period_start_for_date(e.work_date)
+        py = period_year(ps.year, ps.month)
+        if py != selected_year:
+            continue
+        d = year_agg.setdefault(int(e.user_id), {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
+        d["pct60"] += float(e.pct60 or 0)
+        d["pct15"] += float(e.pct15 or 0)
+        d["pazar"] += float(e.pazar or 0)
+        d["bayram"] += float(e.bayram or 0)
+    period_agg = {
+        int(uid): {"pct60": float(s60 or 0), "pct15": float(s15 or 0), "pazar": float(sp or 0), "bayram": float(sb or 0)}
+        for uid, s60, s15, sp, sb in period_agg_rows
+    }
+    rows = []
+    for u in users:
+        p = profiles.get(u.id) or UserProfile(user_id=u.id)
+        pa = period_agg.get(u.id, {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
+        ya = year_agg.get(u.id, {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
+        rows.append({"name": p.ad_soyad or "-", "period_hours": pa["pct60"], "year_hours": ya["pct60"], "year": ya})
+    rows_period = sorted(rows, key=lambda x: x["period_hours"], reverse=True)
+    rows_year = sorted(rows, key=lambda x: x["year_hours"], reverse=True)
+    rows_year_pazar = sorted(rows, key=lambda x: float(x["year"].get("pazar", 0) or 0), reverse=True)
+    rows_year_bayram = sorted(rows, key=lambda x: float(x["year"].get("bayram", 0) or 0), reverse=True)
+
+    wb = Workbook()
+    ws1 = wb.active
+    ws1.title = "Donem Grafigi"
+    ws2 = wb.create_sheet("Yil Grafigi")
+    ws3 = wb.create_sheet("Pazar Grafigi")
+    ws4 = wb.create_sheet("Bayram Grafigi")
+
+    def fill_sheet(ws, title, data_rows, value_getter):
+        ws["A1"] = title
+        ws["A2"] = "Ad Soyad"
+        ws["B2"] = "Deger"
+        row_num = 3
+        for r in data_rows:
+            ws.cell(row=row_num, column=1).value = r["name"]
+            ws.cell(row=row_num, column=2).value = float(value_getter(r))
+            row_num += 1
+
+    fill_sheet(ws1, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
+    fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
+    fill_sheet(ws3, f"Pazar Grafigi ({selected_year})", rows_year_pazar, lambda r: float(r["year"].get("pazar", 0) or 0))
+    fill_sheet(ws4, f"Bayram Grafigi ({selected_year})", rows_year_bayram, lambda r: float(r["year"].get("bayram", 0) or 0))
+
+    mem = io.BytesIO()
+    wb.save(mem)
+    mem.seek(0)
+    return send_file(
+        mem,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"Grafik_Raporu_{selected_year}_{active_start[0]:04d}-{active_start[1]:02d}.xlsx",
     )
 
 
