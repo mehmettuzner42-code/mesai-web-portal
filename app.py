@@ -948,23 +948,23 @@ def admin_users_charts_export_xlsx():
     ws4 = wb["grafik (4)"]
 
     def fill_sheet(ws, title, data_rows, value_getter):
-        ws["A1"] = title
+        # Şablondaki grafik/yazdırma alanını bozmamak için
+        # sadece veri hücrelerini güncelliyoruz.
         ws["A2"] = "Ad Soyad"
         ws["B2"] = "Deger"
-        # Eski verileri temizle (sayi artsa/azalsa sorun olmasin).
-        for rr in range(3, 1000):
+        # Şablon grafiği A3:B24 aralığına bağlı.
+        for rr in range(3, 25):
             ws.cell(row=rr, column=1).value = None
             ws.cell(row=rr, column=2).value = None
 
         row_num = 3
-        for r in data_rows:
+        for r in data_rows[:22]:
             ws.cell(row=row_num, column=1).value = r["name"]
             ws.cell(row=row_num, column=2).value = float(value_getter(r))
             row_num += 1
         last_row = max(3, row_num - 1)
         if ws._charts:
             chart = ws._charts[0]
-            chart.title = title
             if chart.series:
                 series = chart.series[0]
                 series.val.numRef.f = f"'{ws.title}'!$B$3:$B${last_row}"
