@@ -15,9 +15,6 @@ from flask import Flask, flash, jsonify, redirect, render_template, request, sen
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl.cell.cell import MergedCell
 from openpyxl import Workbook, load_workbook
-from openpyxl.chart import BarChart, Reference
-from openpyxl.chart.label import DataLabelList
-from openpyxl.worksheet.page import PageMargins
 from openpyxl.styles import PatternFill
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -943,12 +940,12 @@ def admin_users_charts_export_xlsx():
     rows_year_pazar = sorted(rows, key=lambda x: float(x["year"].get("pazar", 0) or 0), reverse=True)
     rows_year_bayram = sorted(rows, key=lambda x: float(x["year"].get("bayram", 0) or 0), reverse=True)
 
-    wb = Workbook()
-    base_ws = wb.active
-    base_ws.title = "Donem Grafigi"
-    ws2 = wb.create_sheet("Yil Grafigi")
-    ws3 = wb.create_sheet("Pazar Grafigi")
-    ws4 = wb.create_sheet("Bayram Grafigi")
+    template_path = os.path.join(os.path.dirname(__file__), "grafik.xlsx")
+    wb = load_workbook(template_path)
+    base_ws = wb["grafik"]
+    ws2 = wb["grafik (2)"]
+    ws3 = wb["grafik (3)"]
+    ws4 = wb["grafik (4)"]
 
     def fill_sheet(ws, title, data_rows, value_getter):
         ws["A1"] = title
@@ -965,39 +962,14 @@ def admin_users_charts_export_xlsx():
             ws.cell(row=row_num, column=2).value = float(value_getter(r))
             row_num += 1
         last_row = max(3, row_num - 1)
-        chart = BarChart()
-        chart.type = "bar"
-        chart.grouping = "clustered"
-        chart.style = 13
-        chart.varyColors = True
-        chart.title = title
-        chart.legend = None
-        chart.dataLabels = DataLabelList()
-        chart.dataLabels.showVal = True
-        chart.dataLabels.showSerName = False
-        chart.dataLabels.showCatName = False
-        chart.dataLabels.showLegendKey = False
-        chart.dataLabels.dLblPos = "outEnd"
-        chart.width = 29
-        chart.height = 16.5
-        data_ref = Reference(ws, min_col=2, min_row=2, max_row=last_row)
-        cats_ref = Reference(ws, min_col=1, min_row=3, max_row=last_row)
-        chart.add_data(data_ref, titles_from_data=True)
-        chart.set_categories(cats_ref)
-        ws._charts = []
-        ws.add_chart(chart, "D2")
-
-        # Yazdirma ayarlari: sadece grafik alani ve sayfaya sigdirma.
-        ws.page_setup.orientation = "landscape"
-        ws.sheet_properties.pageSetUpPr.fitToPage = True
-        ws.page_setup.fitToWidth = 1
-        ws.page_setup.fitToHeight = 1
-        ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.35, bottom=0.35, header=0.2, footer=0.2)
-        ws.print_options.horizontalCentered = True
-        ws.print_options.verticalCentered = True
-        ws.print_area = "D2:Z36"
-        ws.row_breaks.brk = []
-        ws.col_breaks.brk = []
+        if ws._charts:
+            chart = ws._charts[0]
+            chart.title = title
+            if chart.series:
+                series = chart.series[0]
+                series.val.numRef.f = f"'{ws.title}'!$B$3:$B${last_row}"
+                if series.cat and getattr(series.cat, "strRef", None):
+                    series.cat.strRef.f = f"'{ws.title}'!$A$3:$A${last_row}"
 
     fill_sheet(base_ws, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
     fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
