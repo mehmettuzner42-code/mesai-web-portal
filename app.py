@@ -128,6 +128,7 @@ class DelegatedAdminPermission(db.Model):
     can_view_charts = db.Column(db.Boolean, default=False, nullable=False)
     can_view_filters = db.Column(db.Boolean, default=False, nullable=False)
     can_add_user = db.Column(db.Boolean, default=False, nullable=False)
+    can_change_email = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -430,6 +431,8 @@ def delegate_can(user: User, capability: str) -> bool:
         return bool(perm.can_view_filters)
     if capability == "add_user":
         return bool(perm.can_add_user)
+    if capability == "change_email":
+        return bool(perm.can_change_email)
     if capability == "reset_password":
         return bool(perm.can_reset_password)
     if capability == "impersonate":
@@ -681,6 +684,7 @@ def admin_users():
     can_charts_screen = delegate_can(login_user, "charts")
     can_filters = delegate_can(login_user, "filters")
     can_add_user = delegate_can(login_user, "add_user")
+    can_change_email = delegate_can(login_user, "change_email")
     allowed_ids = allowed_user_ids_for(login_user)
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
     can_impersonate = delegate_can(login_user, "impersonate")
@@ -703,6 +707,7 @@ def admin_users():
                 "can_manage_permissions": bool(is_founder_user(login_user)),
                 "can_reset_password": bool(is_founder_user(login_user) or (delegate_perm.can_reset_password if delegate_perm else False)),
                 "can_open_user": bool(can_impersonate and (allowed_ids is None or u.id in allowed_ids)),
+                "can_change_email": bool(can_change_email),
             }
         )
 
@@ -1048,6 +1053,45 @@ def admin_reset_password(target_user_id: int):
     return redirect(url_for("admin_users"))
 
 
+@app.post("/admin/users/<int:target_user_id>/change-email")
+@login_required
+@admin_or_delegate_required
+def admin_change_email(target_user_id: int):
+    login_user = session_login_user()
+    allowed_ids = allowed_user_ids_for(login_user)
+    if allowed_ids is not None and target_user_id not in allowed_ids:
+        flash("Bu kullanıcı için yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    if not delegate_can(login_user, "change_email"):
+        flash("E-posta değiştirme yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+
+    target = User.query.get(target_user_id)
+    if not target:
+        flash("Kullanıcı bulunamadı.", "error")
+        return redirect(url_for("admin_users"))
+
+    new_email = (request.form.get("new_email") or "").strip().lower()
+    if not new_email:
+        flash("Yeni e-posta boş olamaz.", "error")
+        return redirect(url_for("admin_users"))
+    if "@" not in new_email or "." not in new_email:
+        flash("Geçerli bir e-posta girin.", "error")
+        return redirect(url_for("admin_users"))
+
+    conflict = User.query.filter(User.email == new_email, User.id != target.id).first()
+    if conflict:
+        flash("Bu e-posta başka bir kullanıcıda kayıtlı.", "error")
+        return redirect(url_for("admin_users"))
+
+    old_email = target.email
+    target.email = new_email
+    target.username = new_email
+    db.session.commit()
+    flash(f"{old_email} kullanıcısının e-postası {new_email} olarak güncellendi.", "success")
+    return redirect(url_for("admin_users"))
+
+
 @app.route("/admin/permissions/<int:target_user_id>", methods=["GET", "POST"])
 @login_required
 @admin_required
@@ -1071,6 +1115,7 @@ def admin_edit_permission(target_user_id: int):
         can_view_charts = request.form.get("can_view_charts") == "1"
         can_view_filters = request.form.get("can_view_filters") == "1"
         can_add_user = request.form.get("can_add_user") == "1"
+        can_change_email = request.form.get("can_change_email") == "1"
         if perm is None:
             perm = DelegatedAdminPermission(owner_user_id=founder.id, delegate_user_id=target.id)
             db.session.add(perm)
@@ -1081,6 +1126,7 @@ def admin_edit_permission(target_user_id: int):
         perm.can_view_charts = can_view_charts
         perm.can_view_filters = can_view_filters
         perm.can_add_user = can_add_user
+        perm.can_change_email = can_change_email
         db.session.commit()
         flash("Yetkiler kaydedildi.", "success")
         return redirect(url_for("admin_authorized_users"))
@@ -1103,6 +1149,7 @@ def admin_edit_permission(target_user_id: int):
         can_view_charts=bool(perm.can_view_charts) if perm else False,
         can_view_filters=bool(perm.can_view_filters) if perm else False,
         can_add_user=bool(perm.can_add_user) if perm else False,
+        can_change_email=bool(perm.can_change_email) if perm else False,
     )
 
 
@@ -2321,6 +2368,8 @@ def ensure_delegated_permission_columns():
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_filters BOOLEAN NOT NULL DEFAULT FALSE"))
     if "can_add_user" not in cols:
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_add_user BOOLEAN NOT NULL DEFAULT FALSE"))
+    if "can_change_email" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_change_email BOOLEAN NOT NULL DEFAULT FALSE"))
     # eski kolon varsa yeni yapıya taşımak için bir kez eşitle
     if "can_view_passwords" in cols:
         db.session.execute(

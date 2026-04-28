@@ -17,6 +17,7 @@
                     <th>Grafik Ekranı</th>
                     <th>Filtre Kutuları</th>
                     <th>Kişi Ekleme</th>
+                    <th>E-posta Değiştirme</th>
                     <th>İşlem</th>
                 </tr>
             </thead>
@@ -30,6 +31,7 @@
                     <td>{{ "Evet" if d.perm.can_view_charts else "Hayır" }}</td>
                     <td>{{ "Evet" if d.perm.can_view_filters else "Hayır" }}</td>
                     <td>{{ "Evet" if d.perm.can_add_user else "Hayır" }}</td>
+                    <td>{{ "Evet" if d.perm.can_change_email else "Hayır" }}</td>
                     <td>
                         <a class="button-link mini" href="{{ url_for('admin_edit_permission', target_user_id=d.user.id) }}">Düzenle</a>
                         <form method="post" action="{{ url_for('admin_remove_authorized_user', delegate_user_id=d.user.id) }}" style="display:inline;" onsubmit="return confirm('Bu kullanıcının yetkileri kaldırılsın mı?');">
@@ -38,7 +40,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="8">Henüz yetki verilen kullanıcı yok.</td></tr>
+                <tr><td colspan="9">Henüz yetki verilen kullanıcı yok.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

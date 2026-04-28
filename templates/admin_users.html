@@ -64,8 +64,11 @@
                                 data-user-name="{{ row.profile.ad_soyad or '-' }}"
                                 data-open-url="{{ url_for('admin_impersonate', target_user_id=row.user.id) }}"
                                 data-reset-url="{{ url_for('admin_reset_password', target_user_id=row.user.id) }}"
+                                data-email-url="{{ url_for('admin_change_email', target_user_id=row.user.id) }}"
                                 data-can-open="{{ '1' if row.can_open_user else '0' }}"
                                 data-can-reset="{{ '1' if row.can_reset_password else '0' }}"
+                                data-can-change-email="{{ '1' if row.can_change_email else '0' }}"
+                                data-user-email="{{ row.user.email }}"
                                 data-can-permission="{{ '1' if is_founder else '0' }}"
                                 data-permission-url="{{ url_for('admin_edit_permission', target_user_id=row.user.id) }}"
                                 {% if is_founder %}
@@ -137,6 +140,10 @@
         <form id="dlgResetForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı için geçici şifre oluşturulsun mu?');">
             <button type="submit">Şifre Sıfırla</button>
         </form>
+        <form id="dlgEmailForm" method="post" action="#">
+            <input type="hidden" name="new_email" id="dlgNewEmailInput" value="">
+            <button type="submit">E-posta Değiştir</button>
+        </form>
         {% if is_founder %}
         <form id="dlgDeleteForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı tüm verileriyle silinsin mi? Bu işlem geri alınamaz.');">
             <button type="submit" class="danger">Kullanıcı Sil</button>
@@ -154,6 +161,8 @@
     const dlgTitle = document.getElementById("rowOptionsTitle");
     const dlgOpenAs = document.getElementById("dlgOpenAs");
     const dlgResetForm = document.getElementById("dlgResetForm");
+    const dlgEmailForm = document.getElementById("dlgEmailForm");
+    const dlgNewEmailInput = document.getElementById("dlgNewEmailInput");
     const dlgDeleteForm = document.getElementById("dlgDeleteForm");
     const dlgPermission = document.getElementById("dlgPermission");
     const dlgCloseBtn = document.getElementById("dlgCloseBtn");
@@ -171,6 +180,10 @@
             dlgTitle.textContent = `Seçenekler - ${btn.dataset.userName || ""}`;
             dlgOpenAs.href = btn.dataset.openUrl || "#";
             dlgResetForm.action = btn.dataset.resetUrl || "#";
+            if (dlgEmailForm) {
+                dlgEmailForm.action = btn.dataset.emailUrl || "#";
+                if (dlgNewEmailInput) dlgNewEmailInput.value = "";
+            }
             if (dlgDeleteForm) {
                 dlgDeleteForm.action = btn.dataset.deleteUrl || "#";
             }
@@ -178,6 +191,11 @@
 
             const canReset = btn.dataset.canReset === "1";
             dlgResetForm.hidden = !canReset;
+            if (dlgEmailForm) {
+                const canEmail = btn.dataset.canChangeEmail === "1";
+                dlgEmailForm.hidden = !canEmail;
+                dlgEmailForm.dataset.currentEmail = btn.dataset.userEmail || "";
+            }
 
             if (dlgDeleteForm) {
                 const canDelete = btn.dataset.canDelete === "1";
@@ -195,6 +213,23 @@
     });
 
     dlgCloseBtn.addEventListener("click", () => dlg.close());
+    if (dlgEmailForm) {
+        dlgEmailForm.addEventListener("submit", (e) => {
+            const currentEmail = dlgEmailForm.dataset.currentEmail || "";
+            const nextEmail = window.prompt("Yeni e-posta adresini girin:", currentEmail);
+            if (nextEmail === null) {
+                e.preventDefault();
+                return;
+            }
+            const normalized = String(nextEmail).trim();
+            if (!normalized) {
+                e.preventDefault();
+                alert("E-posta boş olamaz.");
+                return;
+            }
+            if (dlgNewEmailInput) dlgNewEmailInput.value = normalized;
+        });
+    }
     dlg.addEventListener("click", (e) => {
         const rect = dlg.getBoundingClientRect();
         const inDialog =
