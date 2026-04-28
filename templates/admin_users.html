@@ -141,7 +141,6 @@
             <button type="submit">Şifre Sıfırla</button>
         </form>
         <form id="dlgEmailForm" method="post" action="#">
-            <input type="hidden" name="new_email" id="dlgNewEmailInput" value="">
             <button type="submit">E-posta Değiştir</button>
         </form>
         {% if is_founder %}
@@ -155,14 +154,29 @@
     </div>
 </dialog>
 
+<dialog id="emailChangeDialog" class="row-options-dialog">
+    <h3>E-posta Değiştir</h3>
+    <form id="emailChangeDialogForm" method="post" action="#">
+        <label for="emailChangeInput">Yeni E-posta</label>
+        <input id="emailChangeInput" name="new_email" type="email" required style="width:100%; box-sizing:border-box; margin-top:6px; margin-bottom:12px;">
+        <div class="edit-actions">
+            <button type="button" id="emailChangeCancelBtn" class="danger-link">İptal</button>
+            <button type="submit" class="success-btn">Kaydet</button>
+        </div>
+    </form>
+</dialog>
+
 <script>
 (() => {
     const dlg = document.getElementById("rowOptionsDialog");
+    const emailChangeDialog = document.getElementById("emailChangeDialog");
+    const emailChangeDialogForm = document.getElementById("emailChangeDialogForm");
+    const emailChangeInput = document.getElementById("emailChangeInput");
+    const emailChangeCancelBtn = document.getElementById("emailChangeCancelBtn");
     const dlgTitle = document.getElementById("rowOptionsTitle");
     const dlgOpenAs = document.getElementById("dlgOpenAs");
     const dlgResetForm = document.getElementById("dlgResetForm");
     const dlgEmailForm = document.getElementById("dlgEmailForm");
-    const dlgNewEmailInput = document.getElementById("dlgNewEmailInput");
     const dlgDeleteForm = document.getElementById("dlgDeleteForm");
     const dlgPermission = document.getElementById("dlgPermission");
     const dlgCloseBtn = document.getElementById("dlgCloseBtn");
@@ -182,7 +196,7 @@
             dlgResetForm.action = btn.dataset.resetUrl || "#";
             if (dlgEmailForm) {
                 dlgEmailForm.action = btn.dataset.emailUrl || "#";
-                if (dlgNewEmailInput) dlgNewEmailInput.value = "";
+                dlgEmailForm.dataset.currentEmail = btn.dataset.userEmail || "";
             }
             if (dlgDeleteForm) {
                 dlgDeleteForm.action = btn.dataset.deleteUrl || "#";
@@ -215,19 +229,26 @@
     dlgCloseBtn.addEventListener("click", () => dlg.close());
     if (dlgEmailForm) {
         dlgEmailForm.addEventListener("submit", (e) => {
-            const currentEmail = dlgEmailForm.dataset.currentEmail || "";
-            const nextEmail = window.prompt("Yeni e-posta adresini girin:", currentEmail);
-            if (nextEmail === null) {
-                e.preventDefault();
-                return;
-            }
-            const normalized = String(nextEmail).trim();
+            e.preventDefault();
+            if (!emailChangeDialog || !emailChangeDialogForm || !emailChangeInput) return;
+            emailChangeDialogForm.action = dlgEmailForm.action || "#";
+            emailChangeInput.value = (dlgEmailForm.dataset.currentEmail || "").trim();
+            emailChangeDialog.showModal();
+        });
+    }
+    if (emailChangeCancelBtn) {
+        emailChangeCancelBtn.addEventListener("click", () => {
+            if (emailChangeDialog) emailChangeDialog.close();
+        });
+    }
+    if (emailChangeDialogForm) {
+        emailChangeDialogForm.addEventListener("submit", (e) => {
+            const normalized = String((emailChangeInput && emailChangeInput.value) || "").trim();
             if (!normalized) {
                 e.preventDefault();
-                alert("E-posta boş olamaz.");
+                alert("Yeni e-posta boş olamaz.");
                 return;
             }
-            if (dlgNewEmailInput) dlgNewEmailInput.value = normalized;
         });
     }
     dlg.addEventListener("click", (e) => {
