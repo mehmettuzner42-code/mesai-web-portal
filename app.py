@@ -17,7 +17,6 @@ from openpyxl.cell.cell import MergedCell
 from openpyxl import Workbook, load_workbook
 from openpyxl.chart import BarChart, Reference
 from openpyxl.chart.label import DataLabelList
-from openpyxl.chart.series import DataPoint
 from openpyxl.worksheet.page import PageMargins
 from openpyxl.styles import PatternFill
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -978,27 +977,6 @@ def admin_users_charts_export_xlsx():
             cats_ref = Reference(ws, min_col=1, min_row=3, max_row=row_num - 1)
             chart.add_data(data_ref, titles_from_data=True)
             chart.set_categories(cats_ref)
-            # Excel'deki "Renkli -> Palet 1" gorunumune yakin sabit renk dongusu.
-            palette1 = [
-                "5B9BD5",  # blue
-                "ED7D31",  # orange
-                "A5A5A5",  # gray
-                "FFC000",  # gold
-                "4472C4",  # dark blue
-                "70AD47",  # green
-                "255E91",  # deep blue
-                "9E480E",  # brown orange
-                "636363",  # dark gray
-                "997300",  # olive
-            ]
-            if chart.series:
-                ser = chart.series[0]
-                ser.dPt = []
-                for i in range(max(0, row_num - 3)):
-                    pt = DataPoint(idx=i)
-                    pt.graphicalProperties.solidFill = palette1[i % len(palette1)]
-                    pt.graphicalProperties.line.solidFill = palette1[i % len(palette1)]
-                    ser.dPt.append(pt)
             chart.height = 10.5
             chart.width = 24
             ws.add_chart(chart, "D2")
