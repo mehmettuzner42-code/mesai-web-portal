@@ -952,13 +952,13 @@ def admin_users_charts_export_xlsx():
         # sadece veri hücrelerini güncelliyoruz.
         ws["A2"] = "Ad Soyad"
         ws["B2"] = "Deger"
-        # Şablon grafiği A3:B24 aralığına bağlı.
-        for rr in range(3, 25):
+        # Önce eski verileri temizle.
+        for rr in range(3, 2000):
             ws.cell(row=rr, column=1).value = None
             ws.cell(row=rr, column=2).value = None
 
         row_num = 3
-        for r in data_rows[:22]:
+        for r in data_rows:
             ws.cell(row=row_num, column=1).value = r["name"]
             ws.cell(row=row_num, column=2).value = float(value_getter(r))
             row_num += 1
@@ -970,6 +970,9 @@ def admin_users_charts_export_xlsx():
                 series.val.numRef.f = f"'{ws.title}'!$B$3:$B${last_row}"
                 if series.cat and getattr(series.cat, "strRef", None):
                     series.cat.strRef.f = f"'{ws.title}'!$A$3:$A${last_row}"
+            # Kisi sayisi arttikca grafik asagi dogru uzasin.
+            person_count = max(1, len(data_rows))
+            chart.height = max(12.0, min(40.0, 8.0 + (person_count * 0.32)))
 
     fill_sheet(base_ws, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
     fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
