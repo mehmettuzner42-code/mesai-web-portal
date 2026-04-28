@@ -949,13 +949,15 @@ def admin_users_charts_export_xlsx():
     base_ws = wb.active
     base_ws.title = "Donem Grafigi"
     base_chart = deepcopy(base_ws._charts[0]) if base_ws._charts else None
-    ws2 = wb.copy_worksheet(base_ws)
+    # copy_worksheet bazen iliski/bağlanti uyarisi uretebildigi icin
+    # yeni sayfalari sifirdan olusturup grafigi ayri ekliyoruz.
+    ws2 = wb.create_sheet()
     ws2.title = "Yil Grafigi"
-    ws3 = wb.copy_worksheet(base_ws)
+    ws3 = wb.create_sheet()
     ws3.title = "Pazar Grafigi"
-    ws4 = wb.copy_worksheet(base_ws)
+    ws4 = wb.create_sheet()
     ws4.title = "Bayram Grafigi"
-    for ws in (ws2, ws3, ws4):
+    for ws in (base_ws, ws2, ws3, ws4):
         ws._charts = []
         if base_chart is not None:
             ws.add_chart(deepcopy(base_chart), "D2")
@@ -994,8 +996,8 @@ def admin_users_charts_export_xlsx():
             chart.dataLabels.showLegendKey = False
             chart.dataLabels.dLblPos = "outEnd"
             # Tum sayfalarda ayni boyutta, sayfaya yakin tam grafik alani.
-            chart.width = 27
-            chart.height = 14
+            chart.width = 22
+            chart.height = 12
 
         # Yazdirma ayarlari: sadece grafik alani ve sayfaya sigdirma.
         ws.page_setup.orientation = "landscape"
@@ -1004,7 +1006,7 @@ def admin_users_charts_export_xlsx():
         ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.35, bottom=0.35, header=0.2, footer=0.2)
         ws.print_options.horizontalCentered = True
         ws.print_options.verticalCentered = True
-        ws.print_area = "D2:Z34"
+        ws.print_area = "D2:V30"
 
     fill_sheet(base_ws, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
     fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
