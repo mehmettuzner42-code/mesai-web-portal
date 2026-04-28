@@ -965,21 +965,28 @@ def admin_users_charts_export_xlsx():
             chart.style = 16
             chart.y_axis.title = "Deger"
             chart.x_axis.title = "Personel"
+            chart.varyColors = True
             chart.legend = None
             chart.dataLabels = DataLabelList()
             chart.dataLabels.showVal = True
+            chart.dataLabels.showCatName = False
+            chart.dataLabels.showSerName = False
+            chart.dataLabels.showLegendKey = False
+            chart.dataLabels.position = "outEnd"
             data_ref = Reference(ws, min_col=2, min_row=2, max_row=row_num - 1)
             cats_ref = Reference(ws, min_col=1, min_row=3, max_row=row_num - 1)
             chart.add_data(data_ref, titles_from_data=True)
             chart.set_categories(cats_ref)
-            chart.height = 9
-            chart.width = 20
+            chart.height = 10.5
+            chart.width = 24
+            # Alt eksendeki personel isimleri ilk örnekteki gibi çapraz görünsün.
+            chart.x_axis.textRotation = 45
             ws.add_chart(chart, "D2")
             ws.page_setup.orientation = "landscape"
             ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.75, bottom=0.75, header=0.3, footer=0.3)
             ws.print_options.horizontalCentered = True
             ws.print_options.verticalCentered = True
-            ws.print_area = "D2:O24"
+            ws.print_area = "D2:R26"
 
     fill_sheet(ws1, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
     fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
