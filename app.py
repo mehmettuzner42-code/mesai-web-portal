@@ -15,6 +15,7 @@ from flask import Flask, flash, jsonify, redirect, render_template, request, sen
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl.cell.cell import MergedCell
 from openpyxl import Workbook, load_workbook
+from openpyxl.chart import BarChart, Reference
 from openpyxl.styles import PatternFill
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -750,6 +751,8 @@ def admin_users_charts():
     selected_year = request.args.get("year", type=int) or default_year
     selected_period = request.args.get("period", "").strip()
     selected_user_ids = {int(v) for v in request.args.getlist("selected_user_ids") if str(v).isdigit()}
+    selected_daire = request.args.get("daire", "").strip()
+    selected_sube = request.args.get("sube", "").strip()
     active_start = default_start
     if selected_period and "-" in selected_period:
         try:
@@ -841,6 +844,8 @@ def admin_users_charts():
         all_users=users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all(),
         profiles=profiles,
         selected_user_ids=selected_user_ids,
+        selected_daire=selected_daire,
+        selected_sube=selected_sube,
         can_view_filters=delegate_can(login_user, "filters"),
         rows_period=rows_period,
         rows_year=rows_year,
@@ -952,6 +957,19 @@ def admin_users_charts_export_xlsx():
             ws.cell(row=row_num, column=1).value = r["name"]
             ws.cell(row=row_num, column=2).value = float(value_getter(r))
             row_num += 1
+        if row_num > 3:
+            chart = BarChart()
+            chart.type = "col"
+            chart.style = 10
+            chart.y_axis.title = "Deger"
+            chart.x_axis.title = "Personel"
+            data_ref = Reference(ws, min_col=2, min_row=2, max_row=row_num - 1)
+            cats_ref = Reference(ws, min_col=1, min_row=3, max_row=row_num - 1)
+            chart.add_data(data_ref, titles_from_data=True)
+            chart.set_categories(cats_ref)
+            chart.height = 9
+            chart.width = 20
+            ws.add_chart(chart, "D2")
 
     fill_sheet(ws1, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
     fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
