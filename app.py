@@ -7,7 +7,6 @@ import secrets
 import smtplib
 import urllib.error
 import urllib.request
-from copy import deepcopy
 from datetime import date, datetime
 from email.message import EmailMessage
 from functools import wraps
@@ -944,23 +943,12 @@ def admin_users_charts_export_xlsx():
     rows_year_pazar = sorted(rows, key=lambda x: float(x["year"].get("pazar", 0) or 0), reverse=True)
     rows_year_bayram = sorted(rows, key=lambda x: float(x["year"].get("bayram", 0) or 0), reverse=True)
 
-    template_path = os.path.join(os.path.dirname(__file__), "grafik.xlsx")
-    wb = load_workbook(template_path)
+    wb = Workbook()
     base_ws = wb.active
     base_ws.title = "Donem Grafigi"
-    base_chart = deepcopy(base_ws._charts[0]) if base_ws._charts else None
-    # copy_worksheet bazen iliski/bağlanti uyarisi uretebildigi icin
-    # yeni sayfalari sifirdan olusturup grafigi ayri ekliyoruz.
-    ws2 = wb.create_sheet()
-    ws2.title = "Yil Grafigi"
-    ws3 = wb.create_sheet()
-    ws3.title = "Pazar Grafigi"
-    ws4 = wb.create_sheet()
-    ws4.title = "Bayram Grafigi"
-    for ws in (base_ws, ws2, ws3, ws4):
-        ws._charts = []
-        if base_chart is not None:
-            ws.add_chart(deepcopy(base_chart), "D2")
+    ws2 = wb.create_sheet("Yil Grafigi")
+    ws3 = wb.create_sheet("Pazar Grafigi")
+    ws4 = wb.create_sheet("Bayram Grafigi")
 
     def fill_sheet(ws, title, data_rows, value_getter):
         ws["A1"] = title
@@ -977,27 +965,27 @@ def admin_users_charts_export_xlsx():
             ws.cell(row=row_num, column=2).value = float(value_getter(r))
             row_num += 1
         last_row = max(3, row_num - 1)
-
-        if ws._charts:
-            chart = ws._charts[0]
-            chart.title = title
-            if chart.series:
-                series = chart.series[0]
-                series.val.numRef.f = f"'{ws.title}'!$B$3:$B${last_row}"
-                if series.cat and getattr(series.cat, "strRef", None):
-                    series.cat.strRef.f = f"'{ws.title}'!$A$3:$A${last_row}"
-            chart.style = 13
-            chart.varyColors = True
-            chart.legend = None
-            chart.dataLabels = DataLabelList()
-            chart.dataLabels.showVal = True
-            chart.dataLabels.showSerName = False
-            chart.dataLabels.showCatName = False
-            chart.dataLabels.showLegendKey = False
-            chart.dataLabels.dLblPos = "outEnd"
-            # Tum sayfalarda ayni boyutta, sayfaya yakin tam grafik alani.
-            chart.width = 22
-            chart.height = 12
+        chart = BarChart()
+        chart.type = "bar"
+        chart.grouping = "clustered"
+        chart.style = 13
+        chart.varyColors = True
+        chart.title = title
+        chart.legend = None
+        chart.dataLabels = DataLabelList()
+        chart.dataLabels.showVal = True
+        chart.dataLabels.showSerName = False
+        chart.dataLabels.showCatName = False
+        chart.dataLabels.showLegendKey = False
+        chart.dataLabels.dLblPos = "outEnd"
+        chart.width = 29
+        chart.height = 16.5
+        data_ref = Reference(ws, min_col=2, min_row=2, max_row=last_row)
+        cats_ref = Reference(ws, min_col=1, min_row=3, max_row=last_row)
+        chart.add_data(data_ref, titles_from_data=True)
+        chart.set_categories(cats_ref)
+        ws._charts = []
+        ws.add_chart(chart, "D2")
 
         # Yazdirma ayarlari: sadece grafik alani ve sayfaya sigdirma.
         ws.page_setup.orientation = "landscape"
@@ -1007,8 +995,7 @@ def admin_users_charts_export_xlsx():
         ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.35, bottom=0.35, header=0.2, footer=0.2)
         ws.print_options.horizontalCentered = True
         ws.print_options.verticalCentered = True
-        ws.print_area = "D2:X30"
-        # Şablondan kalmış olabilecek manuel sayfa kırılımlarını temizle.
+        ws.print_area = "D2:Z36"
         ws.row_breaks.brk = []
         ws.col_breaks.brk = []
 
