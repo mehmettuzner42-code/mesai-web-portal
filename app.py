@@ -946,6 +946,10 @@ def admin_users_charts_export_xlsx():
     ws2 = wb["grafik (2)"]
     ws3 = wb["grafik (3)"]
     ws4 = wb["grafik (4)"]
+    base_ws.title = "Donem Grafigi"
+    ws2.title = "Yil Grafigi"
+    ws3.title = "Pazar Grafigi"
+    ws4.title = "Bayram Grafigi"
 
     def fill_sheet(ws, title, data_rows, value_getter):
         # Şablondaki grafik/yazdırma alanını bozmamak için
@@ -965,14 +969,12 @@ def admin_users_charts_export_xlsx():
         last_row = max(3, row_num - 1)
         if ws._charts:
             chart = ws._charts[0]
+            chart.title = title
             if chart.series:
                 series = chart.series[0]
                 series.val.numRef.f = f"'{ws.title}'!$B$3:$B${last_row}"
                 if series.cat and getattr(series.cat, "strRef", None):
                     series.cat.strRef.f = f"'{ws.title}'!$A$3:$A${last_row}"
-            # Kisi sayisi arttikca grafik asagi dogru uzasin.
-            person_count = max(1, len(data_rows))
-            chart.height = max(12.0, min(40.0, 8.0 + (person_count * 0.32)))
 
     fill_sheet(base_ws, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
     fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
