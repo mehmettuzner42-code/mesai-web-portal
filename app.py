@@ -943,28 +943,42 @@ def admin_users_charts_export_xlsx():
     rows_year_pazar = sorted(rows, key=lambda x: float(x["year"].get("pazar", 0) or 0), reverse=True)
     rows_year_bayram = sorted(rows, key=lambda x: float(x["year"].get("bayram", 0) or 0), reverse=True)
 
-    wb = Workbook()
-    ws1 = wb.active
-    ws1.title = "Donem Grafigi"
-    ws2 = wb.create_sheet("Yil Grafigi")
-    ws3 = wb.create_sheet("Pazar Grafigi")
-    ws4 = wb.create_sheet("Bayram Grafigi")
+    template_path = os.path.join(os.path.dirname(__file__), "grafik.xlsx")
+    wb = load_workbook(template_path)
+    base_ws = wb.active
+    base_ws.title = "Donem Grafigi"
+    ws2 = wb.copy_worksheet(base_ws)
+    ws2.title = "Yil Grafigi"
+    ws3 = wb.copy_worksheet(base_ws)
+    ws3.title = "Pazar Grafigi"
+    ws4 = wb.copy_worksheet(base_ws)
+    ws4.title = "Bayram Grafigi"
 
     def fill_sheet(ws, title, data_rows, value_getter):
         ws["A1"] = title
         ws["A2"] = "Ad Soyad"
         ws["B2"] = "Deger"
+        # Eski verileri temizle (sayi artsa/azalsa sorun olmasin).
+        for rr in range(3, 1000):
+            ws.cell(row=rr, column=1).value = None
+            ws.cell(row=rr, column=2).value = None
+
         row_num = 3
         for r in data_rows:
             ws.cell(row=row_num, column=1).value = r["name"]
             ws.cell(row=row_num, column=2).value = float(value_getter(r))
             row_num += 1
-        if row_num > 3:
-            chart = BarChart()
-            chart.type = "bar"
-            chart.grouping = "clustered"
-            chart.style = 13
+        last_row = max(3, row_num - 1)
+
+        if ws._charts:
+            chart = ws._charts[0]
             chart.title = title
+            if chart.series:
+                series = chart.series[0]
+                series.val.numRef.f = f"'{ws.title}'!$B$3:$B${last_row}"
+                if series.cat and getattr(series.cat, "strRef", None):
+                    series.cat.strRef.f = f"'{ws.title}'!$A$3:$A${last_row}"
+            chart.style = 13
             chart.varyColors = True
             chart.legend = None
             chart.dataLabels = DataLabelList()
@@ -973,20 +987,8 @@ def admin_users_charts_export_xlsx():
             chart.dataLabels.showCatName = False
             chart.dataLabels.showLegendKey = False
             chart.dataLabels.dLblPos = "outEnd"
-            data_ref = Reference(ws, min_col=2, min_row=2, max_row=row_num - 1)
-            cats_ref = Reference(ws, min_col=1, min_row=3, max_row=row_num - 1)
-            chart.add_data(data_ref, titles_from_data=True)
-            chart.set_categories(cats_ref)
-            chart.height = 10.5
-            chart.width = 24
-            ws.add_chart(chart, "D2")
-            ws.page_setup.orientation = "landscape"
-            ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.75, bottom=0.75, header=0.3, footer=0.3)
-            ws.print_options.horizontalCentered = True
-            ws.print_options.verticalCentered = True
-            ws.print_area = "D2:R26"
 
-    fill_sheet(ws1, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
+    fill_sheet(base_ws, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
     fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
     fill_sheet(ws3, f"Pazar Grafigi ({selected_year})", rows_year_pazar, lambda r: float(r["year"].get("pazar", 0) or 0))
     fill_sheet(ws4, f"Bayram Grafigi ({selected_year})", rows_year_bayram, lambda r: float(r["year"].get("bayram", 0) or 0))
