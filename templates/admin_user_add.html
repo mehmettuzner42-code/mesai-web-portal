@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h2>Yeni Kişi Ekle</h2>
+</div>
+
+<div class="card">
+    <form method="post" class="grid two-col">
+        <label class="full">Daire Başkanlığı
+            <select name="daire_baskanligi" required>
+                {% for v in daire_options %}
+                <option value="{{ v }}" {% if request.form.get('daire_baskanligi', v) == v %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="full">Şube Müdürlüğü
+            <select name="sube_mudurlugu" required>
+                {% for v in sube_options %}
+                <option value="{{ v }}" {% if request.form.get('sube_mudurlugu', v) == v %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Ad Soyad
+            <input name="ad_soyad" value="{{ request.form.get('ad_soyad', '') }}">
+        </label>
+        <label>Sicil No
+            <input name="sicil_no" value="{{ request.form.get('sicil_no', '') }}">
+        </label>
+        <label>Ekip Kodu
+            <input name="ekip_kodu" value="{{ request.form.get('ekip_kodu', '') }}">
+        </label>
+        <label>E-posta
+            <input type="email" name="email" value="{{ request.form.get('email', '') }}" required>
+        </label>
+        <label>Şifre
+            <input type="password" name="password" required>
+        </label>
+        <label>Şifre Tekrar
+            <input type="password" name="password_confirm" required>
+        </label>
+        <div class="full edit-actions">
+            <a class="button-link danger-link" href="{{ url_for('admin_users') }}">İptal</a>
+            <button class="success-btn" type="submit">Kaydet</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

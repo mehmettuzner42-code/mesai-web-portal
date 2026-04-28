@@ -127,6 +127,7 @@ class DelegatedAdminPermission(db.Model):
     can_view_users_screen = db.Column(db.Boolean, default=False, nullable=False)
     can_view_charts = db.Column(db.Boolean, default=False, nullable=False)
     can_view_filters = db.Column(db.Boolean, default=False, nullable=False)
+    can_add_user = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -427,6 +428,8 @@ def delegate_can(user: User, capability: str) -> bool:
         return bool(perm.can_view_charts)
     if capability == "filters":
         return bool(perm.can_view_filters)
+    if capability == "add_user":
+        return bool(perm.can_add_user)
     if capability == "reset_password":
         return bool(perm.can_reset_password)
     if capability == "impersonate":
@@ -628,34 +631,8 @@ def root():
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
-    if request.method == "POST":
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
-        if is_rate_limited(f"register:{ip}", limit=10, window_sec=60):
-            flash("Çok fazla deneme. Lütfen 1 dakika sonra tekrar deneyin.", "error")
-            return render_template("register.html")
-        email = request.form.get("email", "").strip()
-        password = request.form.get("password", "")
-        confirm = request.form.get("confirm_password", "")
-        if "@" not in email:
-            flash("Geçerli bir e-posta girin.", "error")
-            return render_template("register.html")
-        if len(password) < 6:
-            flash("Şifre en az 6 karakter olmalı.", "error")
-            return render_template("register.html")
-        if password != confirm:
-            flash("Şifreler eşleşmiyor.", "error")
-            return render_template("register.html")
-        if User.query.filter((User.username == email) | (User.email == email)).first():
-            flash("Bu e-posta zaten kayıtlı.", "error")
-            return render_template("register.html")
-        # Kullanıcı adı alanını e-posta ile eşit tutuyoruz.
-        user = User(username=email, email=email, password_hash=generate_password_hash(password))
-        db.session.add(user)
-        db.session.commit()
-        get_or_create_profile(user.id)
-        flash("Kayıt başarılı. Giriş yapabilirsiniz.", "success")
-        return redirect(url_for("login"))
-    return render_template("register.html")
+    flash("Web kayıt olma ekranı kapatıldı.", "error")
+    return redirect(url_for("login"))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -703,6 +680,7 @@ def admin_users():
     can_users_screen = delegate_can(login_user, "users")
     can_charts_screen = delegate_can(login_user, "charts")
     can_filters = delegate_can(login_user, "filters")
+    can_add_user = delegate_can(login_user, "add_user")
     allowed_ids = allowed_user_ids_for(login_user)
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
     can_impersonate = delegate_can(login_user, "impersonate")
@@ -748,6 +726,7 @@ def admin_users():
         can_users_screen=can_users_screen,
         can_charts_screen=can_charts_screen,
         can_filters=can_filters,
+        can_add_user=can_add_user,
         years=years,
         selected_year=selected_year,
         period_options=period_options,
@@ -954,6 +933,7 @@ def admin_edit_permission(target_user_id: int):
         can_view_users_screen = request.form.get("can_view_users_screen") == "1"
         can_view_charts = request.form.get("can_view_charts") == "1"
         can_view_filters = request.form.get("can_view_filters") == "1"
+        can_add_user = request.form.get("can_add_user") == "1"
         if perm is None:
             perm = DelegatedAdminPermission(owner_user_id=founder.id, delegate_user_id=target.id)
             db.session.add(perm)
@@ -963,6 +943,7 @@ def admin_edit_permission(target_user_id: int):
         perm.can_view_users_screen = can_view_users_screen
         perm.can_view_charts = can_view_charts
         perm.can_view_filters = can_view_filters
+        perm.can_add_user = can_add_user
         db.session.commit()
         flash("Yetkiler kaydedildi.", "success")
         return redirect(url_for("admin_authorized_users"))
@@ -984,7 +965,66 @@ def admin_edit_permission(target_user_id: int):
         can_view_users_screen=bool(perm.can_view_users_screen) if perm else False,
         can_view_charts=bool(perm.can_view_charts) if perm else False,
         can_view_filters=bool(perm.can_view_filters) if perm else False,
+        can_add_user=bool(perm.can_add_user) if perm else False,
     )
+
+
+@app.route("/admin/users/new", methods=["GET", "POST"])
+@login_required
+@admin_or_delegate_required
+def admin_add_user():
+    login_user = session_login_user()
+    if not login_user:
+        return redirect(url_for("login"))
+    if not delegate_can(login_user, "add_user"):
+        flash("Kişi ekleme yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+
+    daire_options = ["Abone İşleri Dairesi Başkanlığı"]
+    sube_options = [
+        "Sayaç İşleri Şube Müdürlüğü",
+        "Abone İşleri Şube Müdürlüğü",
+        "Müşteri Hizmetleri Şube Müdürlüğü",
+        "Tahakkuk İşleri Şube Müdürlüğü",
+    ]
+
+    if request.method == "POST":
+        daire = request.form.get("daire_baskanligi", "").strip()
+        sube = request.form.get("sube_mudurlugu", "").strip()
+        ad_soyad = request.form.get("ad_soyad", "").strip()
+        sicil_no = request.form.get("sicil_no", "").strip()
+        ekip_kodu = request.form.get("ekip_kodu", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+        password_confirm = request.form.get("password_confirm", "")
+
+        if not email or "@" not in email:
+            flash("Geçerli bir e-posta girin.", "error")
+            return render_template("admin_user_add.html", daire_options=daire_options, sube_options=sube_options)
+        if len(password) < 6:
+            flash("Şifre en az 6 karakter olmalı.", "error")
+            return render_template("admin_user_add.html", daire_options=daire_options, sube_options=sube_options)
+        if password != password_confirm:
+            flash("Şifre tekrar alanı uyuşmuyor.", "error")
+            return render_template("admin_user_add.html", daire_options=daire_options, sube_options=sube_options)
+        if User.query.filter((User.username == email) | (User.email == email)).first():
+            flash("Bu e-posta zaten kayıtlı.", "error")
+            return render_template("admin_user_add.html", daire_options=daire_options, sube_options=sube_options)
+
+        user = User(username=email, email=email, password_hash=generate_password_hash(password))
+        db.session.add(user)
+        db.session.flush()
+        profile = get_or_create_profile(user.id)
+        profile.daire_baskanligi = daire
+        profile.sube_mudurlugu = sube
+        profile.ad_soyad = ad_soyad
+        profile.sicil_no = sicil_no
+        profile.ekip_kodu = ekip_kodu
+        db.session.commit()
+        flash("Yeni kişi eklendi.", "success")
+        return redirect(url_for("admin_users"))
+
+    return render_template("admin_user_add.html", daire_options=daire_options, sube_options=sube_options)
 
 
 @app.get("/admin/authorized-users")
@@ -2142,6 +2182,8 @@ def ensure_delegated_permission_columns():
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_charts BOOLEAN NOT NULL DEFAULT FALSE"))
     if "can_view_filters" not in cols:
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_filters BOOLEAN NOT NULL DEFAULT FALSE"))
+    if "can_add_user" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_add_user BOOLEAN NOT NULL DEFAULT FALSE"))
     # eski kolon varsa yeni yapıya taşımak için bir kez eşitle
     if "can_view_passwords" in cols:
         db.session.execute(
