@@ -16,6 +16,8 @@ from flask_sqlalchemy import SQLAlchemy
 from openpyxl.cell.cell import MergedCell
 from openpyxl import Workbook, load_workbook
 from openpyxl.chart import BarChart, Reference
+from openpyxl.chart.label import DataLabelList
+from openpyxl.worksheet.page import PageMargins
 from openpyxl.styles import PatternFill
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -960,9 +962,12 @@ def admin_users_charts_export_xlsx():
         if row_num > 3:
             chart = BarChart()
             chart.type = "col"
-            chart.style = 10
+            chart.style = 16
             chart.y_axis.title = "Deger"
             chart.x_axis.title = "Personel"
+            chart.legend = None
+            chart.dataLabels = DataLabelList()
+            chart.dataLabels.showVal = True
             data_ref = Reference(ws, min_col=2, min_row=2, max_row=row_num - 1)
             cats_ref = Reference(ws, min_col=1, min_row=3, max_row=row_num - 1)
             chart.add_data(data_ref, titles_from_data=True)
@@ -970,6 +975,11 @@ def admin_users_charts_export_xlsx():
             chart.height = 9
             chart.width = 20
             ws.add_chart(chart, "D2")
+            ws.page_setup.orientation = "landscape"
+            ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.75, bottom=0.75, header=0.3, footer=0.3)
+            ws.print_options.horizontalCentered = True
+            ws.print_options.verticalCentered = True
+            ws.print_area = "D2:O24"
 
     fill_sheet(ws1, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
     fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
