@@ -993,6 +993,18 @@ def admin_users_charts_export_xlsx():
             chart.dataLabels.showCatName = False
             chart.dataLabels.showLegendKey = False
             chart.dataLabels.dLblPos = "outEnd"
+            # Tum sayfalarda ayni boyutta, sayfaya yakin tam grafik alani.
+            chart.width = 27
+            chart.height = 14
+
+        # Yazdirma ayarlari: sadece grafik alani ve sayfaya sigdirma.
+        ws.page_setup.orientation = "landscape"
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.35, bottom=0.35, header=0.2, footer=0.2)
+        ws.print_options.horizontalCentered = True
+        ws.print_options.verticalCentered = True
+        ws.print_area = "D2:Z34"
 
     fill_sheet(base_ws, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
     fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
