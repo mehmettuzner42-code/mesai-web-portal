@@ -7,6 +7,7 @@ import secrets
 import smtplib
 import urllib.error
 import urllib.request
+from copy import deepcopy
 from datetime import date, datetime
 from email.message import EmailMessage
 from functools import wraps
@@ -947,12 +948,17 @@ def admin_users_charts_export_xlsx():
     wb = load_workbook(template_path)
     base_ws = wb.active
     base_ws.title = "Donem Grafigi"
+    base_chart = deepcopy(base_ws._charts[0]) if base_ws._charts else None
     ws2 = wb.copy_worksheet(base_ws)
     ws2.title = "Yil Grafigi"
     ws3 = wb.copy_worksheet(base_ws)
     ws3.title = "Pazar Grafigi"
     ws4 = wb.copy_worksheet(base_ws)
     ws4.title = "Bayram Grafigi"
+    for ws in (ws2, ws3, ws4):
+        ws._charts = []
+        if base_chart is not None:
+            ws.add_chart(deepcopy(base_chart), "D2")
 
     def fill_sheet(ws, title, data_rows, value_getter):
         ws["A1"] = title
