@@ -961,10 +961,10 @@ def admin_users_charts_export_xlsx():
             row_num += 1
         if row_num > 3:
             chart = BarChart()
-            chart.type = "col"
-            chart.style = 16
-            chart.y_axis.title = "Deger"
-            chart.x_axis.title = "Personel"
+            chart.type = "bar"
+            chart.grouping = "clustered"
+            chart.style = 13
+            chart.title = title
             chart.varyColors = True
             chart.legend = None
             chart.dataLabels = DataLabelList()
@@ -972,15 +972,13 @@ def admin_users_charts_export_xlsx():
             chart.dataLabels.showCatName = False
             chart.dataLabels.showSerName = False
             chart.dataLabels.showLegendKey = False
-            chart.dataLabels.position = "outEnd"
+            chart.dataLabels.position = "r"
             data_ref = Reference(ws, min_col=2, min_row=2, max_row=row_num - 1)
             cats_ref = Reference(ws, min_col=1, min_row=3, max_row=row_num - 1)
             chart.add_data(data_ref, titles_from_data=True)
             chart.set_categories(cats_ref)
             chart.height = 10.5
             chart.width = 24
-            # Alt eksendeki personel isimleri ilk örnekteki gibi çapraz görünsün.
-            chart.x_axis.textRotation = 45
             ws.add_chart(chart, "D2")
             ws.page_setup.orientation = "landscape"
             ws.page_margins = PageMargins(left=0.25, right=0.25, top=0.75, bottom=0.75, header=0.3, footer=0.3)
