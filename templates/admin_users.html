@@ -202,6 +202,7 @@
     const usersSelectAll = document.getElementById("usersSelectAll");
     const usersFilterDaire = document.getElementById("usersFilterDaire");
     const usersFilterSube = document.getElementById("usersFilterSube");
+    const bulkYearSelect = document.getElementById("bulkYearSelect");
     const sortableHeaders = Array.from(usersTable.querySelectorAll("thead th.sortable"));
     const sortStorageKey = `adminUsersSort:${String({{ session.get('user_id') or 0 }})}`;
     const sortState = { key: null, dir: "asc" };
@@ -459,6 +460,14 @@
     restoreSortState();
     applyFilters();
     refreshOrderNumbers();
+    if (bulkYearSelect) {
+        bulkYearSelect.addEventListener("change", () => {
+            const url = new URL(window.location.href);
+            url.searchParams.set("year", bulkYearSelect.value);
+            url.searchParams.delete("period");
+            window.location.href = url.toString();
+        });
+    }
 
 })();
 </script>

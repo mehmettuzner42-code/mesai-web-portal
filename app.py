@@ -715,7 +715,25 @@ def admin_users():
         )
 
     founder_entries = OvertimeEntry.query.filter_by(user_id=login_user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
-    years, selected_year, period_options, active_start = build_period_options_for_entries(founder_entries)
+    start_options = sorted({(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) for e in founder_entries}, reverse=True)
+    if not start_options:
+        ps = period_start_for_date(date.today())
+        start_options = [(ps.year, ps.month)]
+    years = sorted({period_year(y, m) for (y, m) in start_options}, reverse=True)
+    default_year = years[0]
+    selected_year = request.args.get("year", type=int) or default_year
+    if selected_year not in years:
+        selected_year = default_year
+    period_options = [(y, m) for (y, m) in start_options if period_year(y, m) == selected_year] or [start_options[0]]
+    selected_period = request.args.get("period", "").strip()
+    active_start = period_options[0]
+    if selected_period and "-" in selected_period:
+        try:
+            sy, sm = (int(x) for x in selected_period.split("-"))
+            if (sy, sm) in period_options:
+                active_start = (sy, sm)
+        except Exception:
+            pass
     sig_prefix = f"bulk_excel_sign_{login_user.id}"
     default_title = "" if not is_founder_user(login_user) else "Ambarlar Şefi"
     default_manager_title = "" if not is_founder_user(login_user) else "Ambarlar Şube Müdürü"
