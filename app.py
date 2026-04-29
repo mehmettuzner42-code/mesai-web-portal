@@ -645,6 +645,7 @@ def inject_helpers():
     is_founder = is_founder_user(effective_user)
     is_delegate_admin = bool(effective_user and get_delegate_permission(effective_user.id))
     is_impersonating = bool(session.get("admin_impersonate_user_id"))
+    can_return_to_self = bool(is_impersonating and can_access_admin_area(login_user))
     return {
         "fmt_num": fmt_num,
         "apk_url": app.config.get("APK_URL", "/download-apk"),
@@ -655,6 +656,7 @@ def inject_helpers():
         "can_view_charts": delegate_can(effective_user, "charts"),
         "can_view_filters": delegate_can(effective_user, "filters"),
         "is_impersonating": is_impersonating,
+        "can_return_to_self": can_return_to_self,
     }
 
 
