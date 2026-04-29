@@ -1579,9 +1579,14 @@ def admin_import_period_excel():
         flash("Dönem seçimi eksik.", "error")
         return redirect(url_for("admin_import_period_excel"))
     try:
-        sy, sm = (int(x) for x in period.split("-"))
         if not year:
-            year = period_year(sy, sm)
+            flash("Yıl seçimi eksik.", "error")
+            return redirect(url_for("admin_import_period_excel"))
+        # Içe aktarmada secilen yil ana yil olarak baz alinir.
+        # Period degerinden sadece ay bilgisi alinır.
+        parts = period.split("-")
+        sm = int(parts[-1])
+        sy = int(year)
     except Exception:
         flash("Dönem formatı hatalı.", "error")
         return redirect(url_for("admin_import_period_excel"))
