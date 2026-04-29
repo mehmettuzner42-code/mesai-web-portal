@@ -21,7 +21,7 @@
                 <a href="{{ url_for('dashboard') }}">Mesai Girişi</a>
                 <a href="{{ url_for('reports') }}">Raporlar</a>
                 <a href="{{ url_for('settings_page') }}">Ayarlar</a>
-                {% if is_founder and is_impersonating %}
+                {% if is_real_founder and is_impersonating %}
                 <form method="post" action="{{ url_for('admin_stop_impersonation') }}" style="display:inline;">
                     <button type="submit">Kurucu Görünümüne Dön</button>
                 </form>
