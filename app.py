@@ -116,6 +116,15 @@ class AppSetting(db.Model):
     setting_value = db.Column(db.Text, default="", nullable=False)
 
 
+class PeriodLock(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    start_year = db.Column(db.Integer, nullable=False, index=True)
+    start_month = db.Column(db.Integer, nullable=False, index=True)
+    is_locked = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class DelegatedAdminPermission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     owner_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
@@ -129,6 +138,7 @@ class DelegatedAdminPermission(db.Model):
     can_view_filters = db.Column(db.Boolean, default=False, nullable=False)
     can_add_user = db.Column(db.Boolean, default=False, nullable=False)
     can_change_email = db.Column(db.Boolean, default=False, nullable=False)
+    can_period_lock = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -451,6 +461,8 @@ def delegate_can(user: User, capability: str) -> bool:
         return bool(perm.can_add_user)
     if capability == "change_email":
         return bool(perm.can_change_email)
+    if capability == "period_lock":
+        return bool(perm.can_period_lock)
     if capability == "reset_password":
         return bool(perm.can_reset_password)
     if capability == "impersonate":
@@ -463,6 +475,21 @@ def session_login_user():
     if not uid:
         return None
     return User.query.get(uid)
+
+
+def period_start_key_for_date(target_date: date):
+    ps = period_start_for_date(target_date)
+    return ps.year, ps.month
+
+
+def is_period_locked(target_date: date) -> bool:
+    sy, sm = period_start_key_for_date(target_date)
+    lock = PeriodLock.query.filter_by(start_year=sy, start_month=sm).first()
+    return bool(lock and lock.is_locked)
+
+
+def can_bypass_period_lock(user: User) -> bool:
+    return bool(is_founder_user(user) or delegate_can(user, "period_lock"))
 
 
 def current_user():
@@ -706,6 +733,7 @@ def admin_users():
     can_add_user = delegate_can(login_user, "add_user")
     can_change_email = delegate_can(login_user, "change_email")
     can_reset_password = delegate_can(login_user, "reset_password")
+    can_period_lock = delegate_can(login_user, "period_lock")
     allowed_ids = allowed_user_ids_for(login_user)
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
     can_impersonate = delegate_can(login_user, "impersonate")
@@ -771,6 +799,7 @@ def admin_users():
         can_charts_screen=can_charts_screen,
         can_filters=can_filters,
         can_add_user=can_add_user,
+        can_period_lock=can_period_lock,
         years=years,
         selected_year=selected_year,
         period_options=period_options,
@@ -1179,6 +1208,7 @@ def admin_edit_permission(target_user_id: int):
         can_view_filters = request.form.get("can_view_filters") == "1"
         can_add_user = request.form.get("can_add_user") == "1"
         can_change_email = request.form.get("can_change_email") == "1"
+        can_period_lock = request.form.get("can_period_lock") == "1"
         if perm is None:
             perm = DelegatedAdminPermission(owner_user_id=founder.id, delegate_user_id=target.id)
             db.session.add(perm)
@@ -1190,6 +1220,7 @@ def admin_edit_permission(target_user_id: int):
         perm.can_view_filters = can_view_filters
         perm.can_add_user = can_add_user
         perm.can_change_email = can_change_email
+        perm.can_period_lock = can_period_lock
         db.session.commit()
         flash("Yetkiler kaydedildi.", "success")
         return redirect(url_for("admin_authorized_users"))
@@ -1213,7 +1244,72 @@ def admin_edit_permission(target_user_id: int):
         can_view_filters=bool(perm.can_view_filters) if perm else False,
         can_add_user=bool(perm.can_add_user) if perm else False,
         can_change_email=bool(perm.can_change_email) if perm else False,
+        can_period_lock=bool(perm.can_period_lock) if perm else False,
     )
+
+
+@app.get("/admin/period-locks")
+@login_required
+@admin_or_delegate_required
+def admin_period_locks():
+    login_user = session_login_user()
+    if not delegate_can(login_user, "period_lock"):
+        flash("Dönem kilidi ekranı yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    allowed_ids = allowed_user_ids_for(login_user)
+    q = db.session.query(OvertimeEntry.work_date).distinct()
+    if allowed_ids is not None:
+        q = q.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0]))
+    work_dates = [row[0] for row in q.all()]
+    start_options = sorted({period_start_key_for_date(wd) for wd in work_dates}, reverse=True)
+    if not start_options:
+        ps = period_start_for_date(date.today())
+        start_options = [(ps.year, ps.month)]
+    lock_rows = PeriodLock.query.all()
+    lock_map = {(r.start_year, r.start_month): bool(r.is_locked) for r in lock_rows}
+    grouped = {}
+    for sy, sm in start_options:
+        py = period_year(sy, sm)
+        p_start, p_end = period_for_start(sy, sm)
+        grouped.setdefault(py, []).append(
+            {
+                "start_year": sy,
+                "start_month": sm,
+                "start_label": format_dmy(p_start),
+                "end_label": format_dmy(p_end),
+                "is_locked": lock_map.get((sy, sm), False),
+            }
+        )
+    year_groups = [(y, grouped[y]) for y in sorted(grouped.keys(), reverse=True)]
+    return render_template("admin_period_locks.html", year_groups=year_groups)
+
+
+@app.post("/admin/period-locks/toggle")
+@login_required
+@admin_or_delegate_required
+def admin_period_locks_toggle():
+    login_user = session_login_user()
+    if not delegate_can(login_user, "period_lock"):
+        flash("Dönem kilidi değiştirme yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    try:
+        sy = int(request.form.get("start_year", "0"))
+        sm = int(request.form.get("start_month", "0"))
+    except Exception:
+        flash("Geçersiz dönem bilgisi.", "error")
+        return redirect(url_for("admin_period_locks"))
+    if sm < 1 or sm > 12 or sy < 1900:
+        flash("Geçersiz dönem bilgisi.", "error")
+        return redirect(url_for("admin_period_locks"))
+    action = (request.form.get("action") or "").strip().lower()
+    lock = PeriodLock.query.filter_by(start_year=sy, start_month=sm).first()
+    if lock is None:
+        lock = PeriodLock(start_year=sy, start_month=sm, is_locked=False)
+        db.session.add(lock)
+    lock.is_locked = action == "lock"
+    db.session.commit()
+    flash("Dönem kilitlendi." if lock.is_locked else "Dönem kilidi açıldı.", "success")
+    return redirect(url_for("admin_period_locks"))
 
 
 @app.route("/admin/users/new", methods=["GET", "POST"])
@@ -2051,6 +2147,7 @@ def api_day_defaults_web():
 @login_required
 def dashboard():
     user = ensure_user_or_redirect()
+    login_user = session_login_user()
     if user is None:
         flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
         return redirect(url_for("login"))
@@ -2077,6 +2174,9 @@ def dashboard():
             if dup:
                 flash("Aynı gün ve saat için mükerrer mesai girilemez.", "error")
                 return redirect(url_for("dashboard"))
+            if is_period_locked(entry.work_date) and not can_bypass_period_lock(login_user):
+                flash("Bu dönem kilitli. Mesai girişi yapılamaz.", "error")
+                return redirect(url_for("dashboard"))
             db.session.add(entry)
             db.session.commit()
             flash("Mesai kaydı eklendi.", "success")
@@ -2100,13 +2200,21 @@ def dashboard():
 @login_required
 def edit_entry(entry_id: int):
     user = ensure_user_or_redirect()
+    login_user = session_login_user()
     if user is None:
         flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
         return redirect(url_for("login"))
     entry = OvertimeEntry.query.filter_by(id=entry_id, user_id=user.id).first_or_404()
     if request.method == "POST":
         try:
-            entry.work_date = parse_date(request.form.get("work_date", ""))
+            new_work_date = parse_date(request.form.get("work_date", ""))
+            if (
+                (is_period_locked(entry.work_date) or is_period_locked(new_work_date))
+                and not can_bypass_period_lock(login_user)
+            ):
+                flash("Bu dönem kilitli. Güncelleme yapılamaz.", "error")
+                return redirect(url_for("dashboard"))
+            entry.work_date = new_work_date
             entry.start_time = request.form.get("start_time", "").strip()
             entry.end_time = request.form.get("end_time", "").strip()
             entry.pct60 = parse_float(request.form.get("pct60", "0"))
@@ -2144,10 +2252,14 @@ def edit_entry(entry_id: int):
 @login_required
 def delete_entry(entry_id: int):
     user = ensure_user_or_redirect()
+    login_user = session_login_user()
     if user is None:
         flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
         return redirect(url_for("login"))
     entry = OvertimeEntry.query.filter_by(id=entry_id, user_id=user.id).first_or_404()
+    if is_period_locked(entry.work_date) and not can_bypass_period_lock(login_user):
+        flash("Bu dönem kilitli. Silme işlemi yapılamaz.", "error")
+        return redirect(url_for("dashboard"))
     db.session.delete(entry)
     db.session.commit()
     flash("Kayıt silindi.", "success")
@@ -2226,6 +2338,7 @@ def reports():
 @login_required
 def import_reports_backup():
     user = ensure_user_or_redirect()
+    login_user = session_login_user()
     if user is None:
         flash("Oturum süresi doldu, lütfen tekrar giriş yapın.", "error")
         return redirect(url_for("login"))
@@ -2264,6 +2377,8 @@ def import_reports_backup():
             try:
                 wd = parse_date(work_date)
             except Exception:
+                continue
+            if is_period_locked(wd) and not can_bypass_period_lock(login_user):
                 continue
             dup = OvertimeEntry.query.filter_by(
                 user_id=user.id,
@@ -2621,6 +2736,8 @@ def api_create_entry():
     data = request.get_json(silent=True) or {}
     try:
         work_date = parse_date(str(data.get("workDate", "")))
+        if is_period_locked(work_date) and not can_bypass_period_lock(user):
+            return jsonify({"error": "period_locked"}), 423
         start_time = str(data.get("startTime", ""))
         end_time = str(data.get("endTime", ""))
 
@@ -2662,7 +2779,10 @@ def api_update_entry(entry_id: int):
     if not entry:
         return jsonify({"error": "not_found"}), 404
     try:
-        entry.work_date = parse_date(str(data.get("workDate", entry.work_date.isoformat())))
+        new_work_date = parse_date(str(data.get("workDate", entry.work_date.isoformat())))
+        if (is_period_locked(entry.work_date) or is_period_locked(new_work_date)) and not can_bypass_period_lock(user):
+            return jsonify({"error": "period_locked"}), 423
+        entry.work_date = new_work_date
         entry.start_time = str(data.get("startTime", entry.start_time))
         entry.end_time = str(data.get("endTime", entry.end_time))
         entry.pct60 = float(data.get("pct60", entry.pct60))
@@ -2684,6 +2804,8 @@ def api_delete_entry(entry_id: int):
     entry = OvertimeEntry.query.filter_by(id=entry_id, user_id=user.id).first()
     if not entry:
         return jsonify({"error": "not_found"}), 404
+    if is_period_locked(entry.work_date) and not can_bypass_period_lock(user):
+        return jsonify({"error": "period_locked"}), 423
     db.session.delete(entry)
     db.session.commit()
     return jsonify({"ok": True})
@@ -2728,6 +2850,8 @@ def ensure_delegated_permission_columns():
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_add_user BOOLEAN NOT NULL DEFAULT FALSE"))
     if "can_change_email" not in cols:
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_change_email BOOLEAN NOT NULL DEFAULT FALSE"))
+    if "can_period_lock" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_period_lock BOOLEAN NOT NULL DEFAULT FALSE"))
     # eski kolon varsa yeni yapıya taşımak için bir kez eşitle
     if "can_view_passwords" in cols:
         db.session.execute(

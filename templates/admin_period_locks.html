@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h2>Dönem Kilidi</h2>
+    <a class="button-link" href="{{ url_for('admin_users') }}">Tüm Kişilere Dön</a>
+</div>
+
+<div class="card">
+    {% for year, periods in year_groups %}
+    <h3 style="margin-top:0;">{{ year }} Dönemleri</h3>
+    <div class="table-wrap" style="margin-bottom:16px;">
+        <table class="compact-table">
+            <thead>
+                <tr>
+                    <th>Dönem</th>
+                    <th>Durum</th>
+                    <th>İşlem</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in periods %}
+                <tr>
+                    <td>{{ p.start_label }} - {{ p.end_label }}</td>
+                    <td>
+                        {% if p.is_locked %}
+                        <span class="danger-link" style="padding:4px 8px; border-radius:6px;">Kilitli</span>
+                        {% else %}
+                        <span class="success-btn" style="padding:4px 8px; border-radius:6px;">Açık</span>
+                        {% endif %}
+                    </td>
+                    <td style="display:flex; gap:8px; align-items:center;">
+                        <form method="post" action="{{ url_for('admin_period_locks_toggle') }}">
+                            <input type="hidden" name="start_year" value="{{ p.start_year }}">
+                            <input type="hidden" name="start_month" value="{{ p.start_month }}">
+                            <input type="hidden" name="action" value="unlock">
+                            <button type="submit" class="success-btn">Kilit Aç</button>
+                        </form>
+                        <form method="post" action="{{ url_for('admin_period_locks_toggle') }}">
+                            <input type="hidden" name="start_year" value="{{ p.start_year }}">
+                            <input type="hidden" name="start_month" value="{{ p.start_month }}">
+                            <input type="hidden" name="action" value="lock">
+                            <button type="submit" class="danger-link">Kilitle</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>Henüz dönem verisi bulunamadı.</p>
+    {% endfor %}
+</div>
+{% endblock %}
