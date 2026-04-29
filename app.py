@@ -645,7 +645,8 @@ def inject_helpers():
     is_founder = is_founder_user(effective_user)
     is_delegate_admin = bool(effective_user and get_delegate_permission(effective_user.id))
     is_impersonating = bool(session.get("admin_impersonate_user_id"))
-    can_return_to_self = bool(is_impersonating and can_access_admin_area(login_user))
+    # Impersonation geri donus butonu, aktif impersonate oturumu varsa her zaman gorunsun.
+    can_return_to_self = bool(session.get("admin_original_user_id") and session.get("admin_impersonate_user_id"))
     return {
         "fmt_num": fmt_num,
         "apk_url": app.config.get("APK_URL", "/download-apk"),
@@ -1472,7 +1473,7 @@ def admin_impersonate(target_user_id: int):
 def admin_stop_impersonation():
     session.pop("admin_impersonate_user_id", None)
     session.pop("admin_original_user_id", None)
-    flash("Kurucu kullanıcı görünümüne geri dönüldü.", "success")
+    flash("Kendi sayfanıza geri dönüldü.", "success")
     return redirect(url_for("admin_users"))
 
 
