@@ -151,12 +151,16 @@
         {% if is_founder %}
         <a id="dlgPermission" class="button-link mini" href="#">Yetki Ver</a>
         {% endif %}
+        {% if is_founder or can_reset_password %}
         <form id="dlgResetForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı için geçici şifre oluşturulsun mu?');">
             <button type="submit">Şifre Sıfırla</button>
         </form>
+        {% endif %}
+        {% if is_founder or can_change_email %}
         <form id="dlgEmailForm" method="post" action="#">
             <button type="submit">E-posta Değiştir</button>
         </form>
+        {% endif %}
         {% if is_founder %}
         <form id="dlgDeleteForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı tüm verileriyle silinsin mi? Bu işlem geri alınamaz.');">
             <button type="submit" class="danger">Kullanıcı Sil</button>
@@ -207,7 +211,7 @@
         btn.addEventListener("click", () => {
             dlgTitle.textContent = `Seçenekler - ${btn.dataset.userName || ""}`;
             dlgOpenAs.href = btn.dataset.openUrl || "#";
-            dlgResetForm.action = btn.dataset.resetUrl || "#";
+            if (dlgResetForm) dlgResetForm.action = btn.dataset.resetUrl || "#";
             if (dlgEmailForm) {
                 dlgEmailForm.action = btn.dataset.emailUrl || "#";
                 dlgEmailForm.dataset.currentEmail = btn.dataset.userEmail || "";
@@ -217,8 +221,10 @@
             }
             dlgOpenAs.hidden = !(btn.dataset.canOpen === "1");
 
-            const canReset = btn.dataset.canReset === "1";
-            dlgResetForm.hidden = !canReset;
+            if (dlgResetForm) {
+                const canReset = btn.dataset.canReset === "1";
+                dlgResetForm.hidden = !canReset;
+            }
             if (dlgEmailForm) {
                 const canEmail = btn.dataset.canChangeEmail === "1";
                 dlgEmailForm.hidden = !canEmail;

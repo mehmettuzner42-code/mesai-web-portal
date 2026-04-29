@@ -687,6 +687,7 @@ def admin_users():
     can_filters = delegate_can(login_user, "filters")
     can_add_user = delegate_can(login_user, "add_user")
     can_change_email = delegate_can(login_user, "change_email")
+    can_reset_password = delegate_can(login_user, "reset_password")
     allowed_ids = allowed_user_ids_for(login_user)
     delegate_perm = get_delegate_permission(login_user.id) if login_user else None
     can_impersonate = delegate_can(login_user, "impersonate")
@@ -707,7 +708,7 @@ def admin_users():
                 "profile": p,
                 "entry_count": int(entry_counts.get(u.id, 0)),
                 "can_manage_permissions": bool(is_founder_user(login_user)),
-                "can_reset_password": bool(is_founder_user(login_user) or (delegate_perm.can_reset_password if delegate_perm else False)),
+                "can_reset_password": bool(can_reset_password),
                 "can_open_user": bool(can_impersonate and (allowed_ids is None or u.id in allowed_ids)),
                 "can_change_email": bool(can_change_email),
             }
@@ -756,6 +757,7 @@ def admin_users_charts():
     years, default_year, period_options, default_start = build_period_options_for_entries(all_entries)
     selected_year = request.args.get("year", type=int) or default_year
     selected_period = request.args.get("period", "").strip()
+    selection_applied = request.args.get("selection_applied") == "1"
     selected_user_ids = {int(v) for v in request.args.getlist("selected_user_ids") if str(v).isdigit()}
     selected_daire = request.args.get("daire", "").strip()
     selected_sube = request.args.get("sube", "").strip()
@@ -775,6 +777,8 @@ def admin_users_charts():
     users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
     if selected_user_ids:
         users = [u for u in users if u.id in selected_user_ids]
+    elif selection_applied:
+        users = []
     profiles = {p.user_id: p for p in UserProfile.query.all()}
 
     period_agg_rows = (
@@ -885,6 +889,7 @@ def admin_users_charts_export_xlsx():
         return redirect(url_for("admin_users"))
     allowed_ids = allowed_user_ids_for(login_user)
     selected_user_ids = {int(v) for v in request.form.getlist("selected_user_ids") if str(v).isdigit()}
+    selection_applied = request.form.get("selection_applied") == "1"
 
     entries_query = OvertimeEntry.query.order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc())
     all_entries = entries_query.all() if allowed_ids is None else entries_query.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0])).all()
@@ -907,6 +912,8 @@ def admin_users_charts_export_xlsx():
     users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
     if selected_user_ids:
         users = [u for u in users if u.id in selected_user_ids]
+    elif selection_applied:
+        users = []
     profiles = {p.user_id: p for p in UserProfile.query.all()}
 
     period_agg_rows = (
