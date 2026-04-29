@@ -1539,9 +1539,14 @@ def admin_export_selected_users_xlsx():
 @login_required
 @admin_required
 def admin_import_period_excel():
-    login_user = session_login_user()
-    all_entries = OvertimeEntry.query.filter_by(user_id=login_user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
-    years, selected_year, period_options, active_start = build_period_options_for_entries(all_entries)
+    # Içe aktar ekraninda 2025-2026 tum donemler sabit listelensin.
+    years = [2026, 2025]
+    period_options = []
+    for y in years:
+        for m in range(1, 13):
+            period_options.append((y, m))
+    selected_year = 2026
+    active_start = (2026, 1)
     if request.method == "GET":
         return render_template(
             "admin_import_excel.html",
