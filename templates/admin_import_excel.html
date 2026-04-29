@@ -12,7 +12,7 @@
         </label>
         <div class="admin-export-bar">
             <label>Yıl
-                <select name="year" required>
+                <select name="year" id="importYearSelect" required>
                     {% for y in years %}
                     <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
                     {% endfor %}
@@ -36,4 +36,15 @@
         </p>
     </form>
 </div>
+<script>
+(() => {
+    const yearSel = document.getElementById("importYearSelect");
+    if (!yearSel) return;
+    yearSel.addEventListener("change", () => {
+        const url = new URL(window.location.href);
+        url.searchParams.set("year", yearSel.value);
+        window.location.href = url.toString();
+    });
+})();
+</script>
 {% endblock %}

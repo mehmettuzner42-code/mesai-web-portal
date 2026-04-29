@@ -1589,13 +1589,10 @@ def admin_export_selected_users_xlsx():
 def admin_import_period_excel():
     # Içe aktar ekraninda 2025-2026 tum donemler sabit listelensin.
     years = [2026, 2025]
-    period_options = []
-    for y in years:
-        for m in range(1, 13):
-            period_options.append((y, m))
     selected_year = request.args.get("year", type=int) or 2026
     if selected_year not in years:
         selected_year = 2026
+    period_options = [(selected_year, m) for m in range(1, 13)]
     active_start = (selected_year, 1)
     if request.method == "GET":
         return render_template(
@@ -1837,6 +1834,7 @@ def admin_import_period_excel():
         + (f" {duplicate_skipped} mükerrer kayıt atlandı." if duplicate_skipped else ""),
         "success",
     )
+    flash(f"İşlenen dönem: {format_dmy(p_start)} - {format_dmy(p_end)}", "success")
     return redirect(url_for("admin_users"))
 
 
