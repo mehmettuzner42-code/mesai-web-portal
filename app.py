@@ -596,17 +596,19 @@ def build_recent_ui_items(entries):
 @app.context_processor
 def inject_helpers():
     login_user = session_login_user()
-    is_founder = is_founder_user(login_user)
-    is_delegate_admin = bool(login_user and get_delegate_permission(login_user.id))
+    effective_user = current_user() if login_user else None
+    is_founder = is_founder_user(effective_user)
+    is_delegate_admin = bool(effective_user and get_delegate_permission(effective_user.id))
     is_impersonating = bool(session.get("admin_impersonate_user_id"))
     return {
         "fmt_num": fmt_num,
         "apk_url": app.config.get("APK_URL", "/download-apk"),
         "is_founder": is_founder,
+        "is_real_founder": is_founder_user(login_user),
         "is_delegate_admin": is_delegate_admin,
-        "can_view_users_screen": delegate_can(login_user, "users"),
-        "can_view_charts": delegate_can(login_user, "charts"),
-        "can_view_filters": delegate_can(login_user, "filters"),
+        "can_view_users_screen": delegate_can(effective_user, "users"),
+        "can_view_charts": delegate_can(effective_user, "charts"),
+        "can_view_filters": delegate_can(effective_user, "filters"),
         "is_impersonating": is_impersonating,
     }
 
@@ -1653,6 +1655,7 @@ def admin_import_period_excel():
     duplicate_skipped = 0
     to_insert = []
     seen_keys = set()
+    seen_day_state = {}
     for r in range(4, 2000):
         sicil = norm_sicil(ws.cell(row=r, column=3).value)  # C
         if not sicil:
@@ -1680,15 +1683,27 @@ def admin_import_period_excel():
             if kind == "P":
                 pazar = 1.0
                 entered_hours = max(0.0, float(value or 0.0))
-                end = add_hours(start, entered_hours)
-                pct15 = calc_night_20_06(start, end) or 0.0
-                pct60 = max(0.0, entered_hours - pct15)
+                if entered_hours > 0:
+                    end = add_hours(start, entered_hours)
+                    # P+X/B+X durumunda X saat %60'a yazilir; %15 sadece 20:00 sonrasi.
+                    pct15 = calc_night_20_06(start, end) or 0.0
+                    pct60 = entered_hours
+                else:
+                    # Sadece P ise varsayilan saat araligi kalsin, saat yazma.
+                    end = defaults["end"]
+                    pct15 = 0.0
+                    pct60 = 0.0
             elif kind == "B":
                 bayram = 1.0
                 entered_hours = max(0.0, float(value or 0.0))
-                end = add_hours(start, entered_hours)
-                pct15 = calc_night_20_06(start, end) or 0.0
-                pct60 = max(0.0, entered_hours - pct15)
+                if entered_hours > 0:
+                    end = add_hours(start, entered_hours)
+                    pct15 = calc_night_20_06(start, end) or 0.0
+                    pct60 = entered_hours
+                else:
+                    end = defaults["end"]
+                    pct15 = 0.0
+                    pct60 = 0.0
             else:
                 num = max(0.0, float(value or 0.0))
                 end = add_hours(start, num)
@@ -1696,17 +1711,39 @@ def admin_import_period_excel():
                 if is_holiday or is_sunday:
                     # P/B disi sayilar pazar/bayrama degil %60'a yazilir.
                     pct60 = num
-                    pct15 = 0.0
-                else:
-                    # Saatlere gore gece kismi otomatik %15, kalan %60.
                     pct15 = auto15
-                    pct60 = max(0.0, num - pct15)
+                else:
+                    # Hafta ici/sbt: %60 saatten dusulmez. %15 sadece 20:00 sonrasi.
+                    pct15 = auto15
+                    pct60 = num
 
             dup_key = (u.id, work_d.isoformat(), start, end)
             if dup_key in seen_keys:
                 duplicate_skipped += 1
                 continue
+            # Ayni kullanici + ayni gun icin:
+            # - Ayni %60 tekrar ise atla
+            # - Pazar/Bayram zaten yazildiysa tekrarini atla
+            day_key = (u.id, work_d.isoformat())
+            state = seen_day_state.setdefault(day_key, {"pct60_values": set(), "has_pazar": False, "has_bayram": False})
+            pct60_key = round(float(pct60 or 0.0), 4)
+            if pct60_key > 0 and pct60_key in state["pct60_values"]:
+                duplicate_skipped += 1
+                continue
+            if pazar > 0 and state["has_pazar"]:
+                duplicate_skipped += 1
+                continue
+            if bayram > 0 and state["has_bayram"]:
+                duplicate_skipped += 1
+                continue
+
             seen_keys.add(dup_key)
+            if pct60_key > 0:
+                state["pct60_values"].add(pct60_key)
+            if pazar > 0:
+                state["has_pazar"] = True
+            if bayram > 0:
+                state["has_bayram"] = True
 
             to_insert.append(
                 OvertimeEntry(
