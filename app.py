@@ -1716,7 +1716,8 @@ def admin_import_period_excel():
         if base is None:
             return hhmm
         mins = int(round(float(hours or 0.0) * 60))
-        end_minutes = max(0, min((23 * 60) + 59, base + mins))
+        # Geceyi asan mesailerde saat ertesi gun 00:00/01:00... olarak devam eder.
+        end_minutes = (base + mins) % (24 * 60)
         hh = end_minutes // 60
         mm = end_minutes % 60
         return f"{hh:02d}:{mm:02d}"
