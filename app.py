@@ -1650,7 +1650,9 @@ def admin_import_period_excel():
     matched_user_ids = set()
     rows_added = 0
     skipped_rows = 0
+    duplicate_skipped = 0
     to_insert = []
+    seen_keys = set()
     for r in range(4, 2000):
         sicil = norm_sicil(ws.cell(row=r, column=3).value)  # C
         if not sicil:
@@ -1677,22 +1679,34 @@ def admin_import_period_excel():
 
             if kind == "P":
                 pazar = 1.0
-                pct60 = max(0.0, float(value or 0.0))
+                entered_hours = max(0.0, float(value or 0.0))
+                end = add_hours(start, entered_hours)
+                pct15 = calc_night_20_06(start, end) or 0.0
+                pct60 = max(0.0, entered_hours - pct15)
             elif kind == "B":
                 bayram = 1.0
-                pct60 = max(0.0, float(value or 0.0))
+                entered_hours = max(0.0, float(value or 0.0))
+                end = add_hours(start, entered_hours)
+                pct15 = calc_night_20_06(start, end) or 0.0
+                pct60 = max(0.0, entered_hours - pct15)
             else:
                 num = max(0.0, float(value or 0.0))
+                end = add_hours(start, num)
+                auto15 = calc_night_20_06(start, end) or 0.0
                 if is_holiday or is_sunday:
                     # P/B disi sayilar pazar/bayrama degil %60'a yazilir.
                     pct60 = num
+                    pct15 = 0.0
                 else:
-                    # Excelde sadece tek saat bilgisi oldugu icin
-                    # once %60, 3 saati asan kisim otomatik %15'e ayrilir.
-                    pct60 = min(3.0, num)
-                    pct15 = max(0.0, num - 3.0)
-                # Saat bilgisini de toplam mesaiye gore kaba olarak ilerlet.
-                end = add_hours(start, pct60 + pct15)
+                    # Saatlere gore gece kismi otomatik %15, kalan %60.
+                    pct15 = auto15
+                    pct60 = max(0.0, num - pct15)
+
+            dup_key = (u.id, work_d.isoformat(), start, end)
+            if dup_key in seen_keys:
+                duplicate_skipped += 1
+                continue
+            seen_keys.add(dup_key)
 
             to_insert.append(
                 OvertimeEntry(
@@ -1704,7 +1718,7 @@ def admin_import_period_excel():
                     pct15=pct15,
                     pazar=pazar,
                     bayram=bayram,
-                    description=f"Excel içe aktarma ({year}-{sm:02d})",
+                    description="",
                 )
             )
             rows_added += 1
@@ -1724,9 +1738,33 @@ def admin_import_period_excel():
     db.session.commit()
     flash(
         f"İçe aktarma tamamlandı. {len(matched_user_ids)} kullanıcı için {rows_added} kayıt işlendi."
-        + (f" {skipped_rows} satırda sicil eşleşmedi." if skipped_rows else ""),
+        + (f" {skipped_rows} satırda sicil eşleşmedi." if skipped_rows else "")
+        + (f" {duplicate_skipped} mükerrer kayıt atlandı." if duplicate_skipped else ""),
         "success",
     )
+    return redirect(url_for("admin_users"))
+
+
+@app.post("/admin/users/delete-period-all")
+@login_required
+@admin_required
+def admin_delete_period_all():
+    period = (request.form.get("period") or "").strip()
+    if "-" not in period:
+        flash("Dönem seçimi eksik.", "error")
+        return redirect(url_for("admin_users"))
+    try:
+        sy, sm = (int(x) for x in period.split("-"))
+    except Exception:
+        flash("Dönem formatı hatalı.", "error")
+        return redirect(url_for("admin_users"))
+    p_start, p_end = period_for_start(sy, sm)
+    deleted = OvertimeEntry.query.filter(
+        OvertimeEntry.work_date >= p_start,
+        OvertimeEntry.work_date <= p_end,
+    ).delete(synchronize_session=False)
+    db.session.commit()
+    flash(f"Seçilen dönem için toplam {deleted} kayıt silindi.", "success")
     return redirect(url_for("admin_users"))
 
 

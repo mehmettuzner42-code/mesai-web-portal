@@ -92,14 +92,14 @@
 
         <div class="admin-export-bar">
             <label>Yıl
-                <select name="year">
+                <select name="year" id="bulkYearSelect">
                     {% for y in years %}
                     <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
                     {% endfor %}
                 </select>
             </label>
             <label>Dönem
-                <select name="period">
+                <select name="period" id="bulkPeriodSelect">
                     {% for sy, sm in period_options %}
                     {% set em = 1 if sm == 12 else sm + 1 %}
                     <option value="{{ sy }}-{{ '%02d'|format(sm) }}" {% if period_value == (sy ~ '-' ~ ('%02d'|format(sm))) %}selected{% endif %}>
@@ -110,6 +110,17 @@
             </label>
             <button type="submit">Toplu Excel Raporu</button>
         </div>
+        {% if is_founder %}
+        <div class="admin-export-bar" style="margin-top:8px;">
+            <button
+                type="submit"
+                class="danger-link"
+                formaction="{{ url_for('admin_delete_period_all') }}"
+                formmethod="post"
+                onclick="return confirm('Seçilen yıl/dönem için TÜM kullanıcıların verileri silinsin mi?');"
+            >Veri Sil</button>
+        </div>
+        {% endif %}
         <div class="admin-sign-grid">
             <label>Şef Ünvan
                 <input type="text" name="chef_title" value="{{ sign_fields.chef_title }}">
@@ -442,6 +453,7 @@
     restoreSortState();
     applyFilters();
     refreshOrderNumbers();
+
 })();
 </script>
 {% endblock %}
