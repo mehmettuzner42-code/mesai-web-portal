@@ -754,8 +754,17 @@ def admin_users_charts():
     allowed_ids = allowed_user_ids_for(login_user)
     entries_query = OvertimeEntry.query.order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc())
     all_entries = entries_query.all() if allowed_ids is None else entries_query.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0])).all()
-    years, default_year, period_options, default_start = build_period_options_for_entries(all_entries)
+    start_options = sorted({(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) for e in all_entries}, reverse=True)
+    if not start_options:
+        ps = period_start_for_date(date.today())
+        start_options = [(ps.year, ps.month)]
+    years = sorted({period_year(y, m) for (y, m) in start_options}, reverse=True)
+    default_year = years[0]
     selected_year = request.args.get("year", type=int) or default_year
+    if selected_year not in years:
+        selected_year = default_year
+    period_options = [(y, m) for (y, m) in start_options if period_year(y, m) == selected_year] or [start_options[0]]
+    default_start = period_options[0]
     selected_period = request.args.get("period", "").strip()
     selection_applied = request.args.get("selection_applied") == "1"
     selected_user_ids = {int(v) for v in request.args.getlist("selected_user_ids") if str(v).isdigit()}
@@ -769,8 +778,6 @@ def admin_users_charts():
                 active_start = (sy, sm)
         except Exception:
             pass
-    # Donem secildiginde yil grafikleri ayni donem yilina otursun.
-    selected_year = period_year(active_start[0], active_start[1])
     p_start, p_end = period_for_start(active_start[0], active_start[1])
 
     users_query = User.query.order_by(User.email.asc())
@@ -893,8 +900,17 @@ def admin_users_charts_export_xlsx():
 
     entries_query = OvertimeEntry.query.order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc())
     all_entries = entries_query.all() if allowed_ids is None else entries_query.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0])).all()
-    years, default_year, period_options, default_start = build_period_options_for_entries(all_entries)
+    start_options = sorted({(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) for e in all_entries}, reverse=True)
+    if not start_options:
+        ps = period_start_for_date(date.today())
+        start_options = [(ps.year, ps.month)]
+    years = sorted({period_year(y, m) for (y, m) in start_options}, reverse=True)
+    default_year = years[0]
     selected_year = request.form.get("year", type=int) or default_year
+    if selected_year not in years:
+        selected_year = default_year
+    period_options = [(y, m) for (y, m) in start_options if period_year(y, m) == selected_year] or [start_options[0]]
+    default_start = period_options[0]
     selected_period = request.form.get("period", "").strip()
     active_start = default_start
     if selected_period and "-" in selected_period:
@@ -904,8 +920,6 @@ def admin_users_charts_export_xlsx():
                 active_start = (sy, sm)
         except Exception:
             pass
-    # Donem secildiginde yil grafikleri ayni donem yilina otursun.
-    selected_year = period_year(active_start[0], active_start[1])
     p_start, p_end = period_for_start(active_start[0], active_start[1])
 
     users_query = User.query.order_by(User.email.asc())
@@ -1345,7 +1359,10 @@ def admin_export_selected_users_xlsx():
         flash("Yıl/dönem bilgisi eksik.", "error")
         return redirect(url_for("admin_users"))
     try:
-        sy, sm = (int(x) for x in period.split("-"))
+        # Exportta secilen yil ana yil olarak baz alinsin.
+        parts = period.split("-")
+        sm = int(parts[-1])
+        sy = int(year)
     except Exception:
         flash("Dönem formatı hatalı.", "error")
         return redirect(url_for("admin_users"))
@@ -1727,7 +1744,7 @@ def admin_import_period_excel():
                 if is_holiday or is_sunday:
                     # P/B disi sayilar pazar/bayrama degil %60'a yazilir.
                     pct60 = num
-                    pct15 = auto15
+                    pct15 = 0.0
                 else:
                     # Hafta ici/sbt: %60 saatten dusulmez. %15 sadece 20:00 sonrasi.
                     pct15 = auto15

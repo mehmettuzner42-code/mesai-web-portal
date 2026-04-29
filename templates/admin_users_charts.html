@@ -202,6 +202,7 @@
     const exportPeriod = document.getElementById("exportPeriod");
     const chartsYear = document.getElementById("chartsYear");
     const chartsPeriod = document.getElementById("chartsPeriod");
+    const chartsFilterForm = document.getElementById("chartsFilterForm");
 
     function uniqueSelectValues(selectEl) {
         const seen = new Set();
@@ -353,6 +354,12 @@
     checkboxes.forEach((cb) => cb.addEventListener("change", updateSelectAllState));
     restoreSortState();
     applyFilters();
+
+    if (chartsYear && chartsFilterForm) {
+        chartsYear.addEventListener("change", function() {
+            chartsFilterForm.submit();
+        });
+    }
 
     exportBtn.addEventListener("click", function() {
         exportForm.querySelectorAll('input[name="selected_user_ids"]').forEach((n) => n.remove());
