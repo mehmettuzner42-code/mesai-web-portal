@@ -1535,6 +1535,196 @@ def admin_export_selected_users_xlsx():
     )
 
 
+@app.route("/admin/users/import-excel", methods=["GET", "POST"])
+@login_required
+@admin_required
+def admin_import_period_excel():
+    login_user = session_login_user()
+    all_entries = OvertimeEntry.query.filter_by(user_id=login_user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
+    years, selected_year, period_options, active_start = build_period_options_for_entries(all_entries)
+    if request.method == "GET":
+        return render_template(
+            "admin_import_excel.html",
+            years=years,
+            selected_year=selected_year,
+            period_options=period_options,
+            period_value=f"{active_start[0]:04d}-{active_start[1]:02d}",
+        )
+
+    upload = request.files.get("excel_file")
+    year = request.form.get("year", type=int)
+    period = (request.form.get("period") or "").strip()
+    if not upload or not upload.filename:
+        flash("Lütfen bir Excel dosyası seçin.", "error")
+        return redirect(url_for("admin_import_period_excel"))
+    if "-" not in period:
+        flash("Dönem seçimi eksik.", "error")
+        return redirect(url_for("admin_import_period_excel"))
+    try:
+        sy, sm = (int(x) for x in period.split("-"))
+        if not year:
+            year = period_year(sy, sm)
+    except Exception:
+        flash("Dönem formatı hatalı.", "error")
+        return redirect(url_for("admin_import_period_excel"))
+
+    try:
+        wb = load_workbook(upload, data_only=True)
+    except Exception:
+        flash("Excel dosyası okunamadı.", "error")
+        return redirect(url_for("admin_import_period_excel"))
+    ws = wb[wb.sheetnames[0]]
+
+    # Secilen donemin gun sayisina gore G'den baslayip dinamik kolon ilerler.
+    p_start, p_end = period_for_start(sy, sm)
+    period_days = []
+    cur = p_start
+    while cur <= p_end:
+        period_days.append(cur)
+        cur = cur + timedelta(days=1)
+    day_col_map = {7 + idx: d for idx, d in enumerate(period_days)}  # G + idx
+
+    users = User.query.order_by(User.email.asc()).all()
+    profiles = {p.user_id: p for p in UserProfile.query.all()}
+
+    def norm_sicil(v):
+        t = str(v or "").strip()
+        if not t:
+            return ""
+        if t.endswith(".0"):
+            try:
+                return str(int(float(t)))
+            except Exception:
+                return t
+        return t
+
+    user_by_sicil = {}
+    for u in users:
+        p = profiles.get(u.id)
+        s = norm_sicil(p.sicil_no if p else "")
+        if s:
+            user_by_sicil[s] = u
+
+    def parse_excel_cell(v):
+        if v is None:
+            return None, None
+        raw = str(v).strip().upper().replace(",", ".").replace(" ", "")
+        if not raw:
+            return None, None
+        if raw.startswith("P"):
+            extra = 0.0
+            if "+" in raw:
+                try:
+                    extra = max(0.0, float(raw.split("+", 1)[1] or "0"))
+                except Exception:
+                    extra = 0.0
+            return "P", extra
+        if raw.startswith("B"):
+            extra = 0.0
+            if "+" in raw:
+                try:
+                    extra = max(0.0, float(raw.split("+", 1)[1] or "0"))
+                except Exception:
+                    extra = 0.0
+            return "B", extra
+        try:
+            return "N", float(raw)
+        except Exception:
+            return None, None
+
+    def add_hours(hhmm: str, hours: float) -> str:
+        base = hhmm_to_minutes(hhmm)
+        if base is None:
+            return hhmm
+        mins = int(round(float(hours or 0.0) * 60))
+        end_minutes = max(0, min((23 * 60) + 59, base + mins))
+        hh = end_minutes // 60
+        mm = end_minutes % 60
+        return f"{hh:02d}:{mm:02d}"
+
+    matched_user_ids = set()
+    rows_added = 0
+    skipped_rows = 0
+    to_insert = []
+    for r in range(4, 2000):
+        sicil = norm_sicil(ws.cell(row=r, column=3).value)  # C
+        if not sicil:
+            continue
+        u = user_by_sicil.get(sicil)
+        if not u:
+            skipped_rows += 1
+            continue
+        matched_user_ids.add(u.id)
+        for col, work_d in day_col_map.items():
+            kind, value = parse_excel_cell(ws.cell(row=r, column=col).value)
+            if kind is None:
+                continue
+
+            defaults = day_defaults(work_d)
+            start = defaults["start"]
+            end = defaults["end"]
+            pct60 = 0.0
+            pct15 = 0.0
+            pazar = 0.0
+            bayram = 0.0
+            is_holiday = bool(defaults["isHoliday"])
+            is_sunday = int(defaults["weekday"]) == 6
+
+            if kind == "P":
+                pazar = 1.0
+                pct60 = max(0.0, float(value or 0.0))
+            elif kind == "B":
+                bayram = 1.0
+                pct60 = max(0.0, float(value or 0.0))
+            else:
+                num = max(0.0, float(value or 0.0))
+                if is_holiday or is_sunday:
+                    # P/B disi sayilar pazar/bayrama degil %60'a yazilir.
+                    pct60 = num
+                else:
+                    # Excelde sadece tek saat bilgisi oldugu icin
+                    # once %60, 3 saati asan kisim otomatik %15'e ayrilir.
+                    pct60 = min(3.0, num)
+                    pct15 = max(0.0, num - 3.0)
+                # Saat bilgisini de toplam mesaiye gore kaba olarak ilerlet.
+                end = add_hours(start, pct60 + pct15)
+
+            to_insert.append(
+                OvertimeEntry(
+                    user_id=u.id,
+                    work_date=work_d,
+                    start_time=start,
+                    end_time=end,
+                    pct60=pct60,
+                    pct15=pct15,
+                    pazar=pazar,
+                    bayram=bayram,
+                    description=f"Excel içe aktarma ({year}-{sm:02d})",
+                )
+            )
+            rows_added += 1
+
+    if not matched_user_ids:
+        flash("Excelde eşleşen sicil numarası bulunamadı.", "error")
+        return redirect(url_for("admin_import_period_excel"))
+
+    p_start, p_end = period_for_start(sy, sm)
+    OvertimeEntry.query.filter(
+        OvertimeEntry.user_id.in_(list(matched_user_ids)),
+        OvertimeEntry.work_date >= p_start,
+        OvertimeEntry.work_date <= p_end,
+    ).delete(synchronize_session=False)
+    if to_insert:
+        db.session.add_all(to_insert)
+    db.session.commit()
+    flash(
+        f"İçe aktarma tamamlandı. {len(matched_user_ids)} kullanıcı için {rows_added} kayıt işlendi."
+        + (f" {skipped_rows} satırda sicil eşleşmedi." if skipped_rows else ""),
+        "success",
+    )
+    return redirect(url_for("admin_users"))
+
+
 @app.route("/settings", methods=["GET", "POST"])
 @login_required
 def settings_page():
