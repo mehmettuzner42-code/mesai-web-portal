@@ -253,6 +253,12 @@ def period_year(start_year: int, start_month: int) -> int:
     return start_year + 1 if start_month == 12 else start_year
 
 
+def resolve_period_start_year(selected_year: int, start_month: int) -> int:
+    # Donem yili kurali: Aralikta baslayan donem bir sonraki yilin donemine yazilir.
+    # Ornek: 24.12.2024-23.01.2025 donemi, 2025 donem yilina aittir.
+    return selected_year - 1 if int(start_month) == 12 else selected_year
+
+
 def fixed_holiday_set(year: int):
     return {
         date(year, 1, 1),
@@ -1377,10 +1383,9 @@ def admin_export_selected_users_xlsx():
         flash("Yıl/dönem bilgisi eksik.", "error")
         return redirect(url_for("admin_users"))
     try:
-        # Exportta secilen yil ana yil olarak baz alinsin.
-        parts = period.split("-")
-        sm = int(parts[-1])
-        sy = int(year)
+        # admin_users ekraninda period degeri YYYY-MM olarak gelir;
+        # Aralik/Ocak gibi donemlerde baslangic yili period degerinden alinmali.
+        sy, sm = (int(x) for x in period.split("-"))
     except Exception:
         flash("Dönem formatı hatalı.", "error")
         return redirect(url_for("admin_users"))
@@ -1625,7 +1630,7 @@ def admin_import_period_excel():
             sm = int(period)
         if sm < 1 or sm > 12:
             raise ValueError("invalid month")
-        sy = int(year)
+        sy = resolve_period_start_year(int(year), int(sm))
     except Exception:
         flash("Dönem formatı hatalı.", "error")
         return redirect(url_for("admin_import_period_excel"))
