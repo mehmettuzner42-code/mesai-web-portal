@@ -21,9 +21,12 @@
             <label>Dönem
                 <select name="period" required>
                     {% for sy, sm in period_options %}
+                    {% set start_year = selected_year - 1 if sm == 12 else selected_year %}
+                    {% set end_year = selected_year %}
                     {% set em = 1 if sm == 12 else sm + 1 %}
                     <option value="{{ '%02d'|format(sm) }}" {% if period_value.endswith('%02d'|format(sm)) %}selected{% endif %}>
                         {{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][sm-1] }}/{{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][em-1] }}
+                        (24.{{ '%02d'|format(sm) }}.{{ start_year }} - 23.{{ '%02d'|format(em) }}.{{ end_year }})
                     </option>
                     {% endfor %}
                 </select>
