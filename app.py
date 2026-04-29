@@ -271,6 +271,18 @@ def fixed_holiday_set(year: int):
     }
 
 
+def half_holiday_set(year: int):
+    # Yarım gün resmi tatiller (arife günleri) - içe aktarma kuralı için.
+    # Gerektikçe yeni yıllar eklenebilir.
+    mapping = {
+        2024: {date(2024, 4, 9), date(2024, 6, 15)},
+        2025: {date(2025, 3, 29), date(2025, 6, 5)},
+        2026: {date(2026, 3, 19), date(2026, 5, 26)},
+        2027: {date(2027, 3, 8), date(2027, 5, 15)},
+    }
+    return mapping.get(year, set())
+
+
 def day_defaults(target_date: date, end_time_override: str = None):
     wd = target_date.weekday()  # 0 pazartesi ... 6 pazar
     holidays = fixed_holiday_set(target_date.year)
@@ -1754,10 +1766,22 @@ def admin_import_period_excel():
                     pct15 = 0.0
                     pct60 = 0.0
             elif kind == "B":
-                bayram = 1.0
+                is_half_holiday = work_d in half_holiday_set(work_d.year)
+                # B/B+X:
+                # - yarım resmi tatilde 0,5
+                # - diğer resmi tatillerde 1
+                bayram = 0.5 if is_half_holiday else 1.0
                 entered_hours = max(0.0, float(value or 0.0))
+                if is_half_holiday:
+                    # Yarım gün resmi tatil temel saatleri.
+                    start = "13:00"
+                    end = "17:00"
                 if entered_hours > 0:
-                    end = add_hours(start, entered_hours)
+                    # Yarım gün tatilde +X, 17:00 sonrasına eklenir.
+                    if is_half_holiday:
+                        end = add_hours("17:00", entered_hours)
+                    else:
+                        end = add_hours(start, entered_hours)
                     pct15 = calc_night_20_06(start, end) or 0.0
                     pct60 = entered_hours
                 else:
