@@ -727,16 +727,19 @@ def build_period_options_for_entries(entries):
 @admin_or_delegate_required
 def admin_users():
     login_user = session_login_user()
-    can_users_screen = delegate_can(login_user, "users")
-    can_charts_screen = delegate_can(login_user, "charts")
-    can_filters = delegate_can(login_user, "filters")
-    can_add_user = delegate_can(login_user, "add_user")
-    can_change_email = delegate_can(login_user, "change_email")
-    can_reset_password = delegate_can(login_user, "reset_password")
-    can_period_lock = delegate_can(login_user, "period_lock")
-    allowed_ids = allowed_user_ids_for(login_user)
-    delegate_perm = get_delegate_permission(login_user.id) if login_user else None
-    can_impersonate = delegate_can(login_user, "impersonate")
+    effective_user = current_user() if login_user else None
+    can_users_screen = delegate_can(effective_user, "users")
+    can_charts_screen = delegate_can(effective_user, "charts")
+    can_filters = delegate_can(effective_user, "filters")
+    can_add_user = delegate_can(effective_user, "add_user")
+    can_change_email = delegate_can(effective_user, "change_email")
+    can_reset_password = delegate_can(effective_user, "reset_password")
+    can_period_lock = delegate_can(effective_user, "period_lock")
+    allowed_ids = allowed_user_ids_for(effective_user)
+    can_impersonate = delegate_can(effective_user, "impersonate")
+    if not can_users_screen:
+        flash("Kullanıcı ekranını görme yetkiniz yok.", "error")
+        return redirect(url_for("dashboard"))
     # Tum kullanicilari profil ile birlikte listele
     users_query = User.query.order_by(User.created_at.desc())
     users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
@@ -753,14 +756,15 @@ def admin_users():
                 "user": u,
                 "profile": p,
                 "entry_count": int(entry_counts.get(u.id, 0)),
-                "can_manage_permissions": bool(is_founder_user(login_user)),
+                "can_manage_permissions": bool(is_founder_user(effective_user)),
                 "can_reset_password": bool(can_reset_password),
                 "can_open_user": bool(can_impersonate and (allowed_ids is None or u.id in allowed_ids)),
                 "can_change_email": bool(can_change_email),
             }
         )
 
-    founder_entries = OvertimeEntry.query.filter_by(user_id=login_user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
+    owner_user = effective_user or login_user
+    founder_entries = OvertimeEntry.query.filter_by(user_id=owner_user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
     start_options = sorted({(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) for e in founder_entries}, reverse=True)
     if not start_options:
         ps = period_start_for_date(date.today())
@@ -780,10 +784,10 @@ def admin_users():
                 active_start = (sy, sm)
         except Exception:
             pass
-    sig_prefix = f"bulk_excel_sign_{login_user.id}"
-    default_title = "" if not is_founder_user(login_user) else "Ambarlar Şefi"
-    default_manager_title = "" if not is_founder_user(login_user) else "Ambarlar Şube Müdürü"
-    default_director_title = "" if not is_founder_user(login_user) else "Daire Başkanı"
+    sig_prefix = f"bulk_excel_sign_{owner_user.id}"
+    default_title = "" if not is_founder_user(owner_user) else "Ambarlar Şefi"
+    default_manager_title = "" if not is_founder_user(owner_user) else "Ambarlar Şube Müdürü"
+    default_director_title = "" if not is_founder_user(owner_user) else "Daire Başkanı"
     sign_fields = {
         "chef_title": get_setting_value(f"{sig_prefix}_chef_title", default_title),
         "chef_name": get_setting_value(f"{sig_prefix}_chef_name", ""),

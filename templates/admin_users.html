@@ -8,7 +8,7 @@
         {% if is_founder or can_charts_screen %}
         <a class="button-link" href="{{ url_for('admin_users_charts') }}">Grafik</a>
         {% endif %}
-        {% if is_real_founder or can_period_lock %}
+        {% if is_founder or can_period_lock %}
         <a class="button-link" href="{{ url_for('admin_period_locks') }}">Dönem Kilidi</a>
         {% endif %}
         {% if is_founder or can_add_user %}
