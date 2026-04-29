@@ -22,7 +22,7 @@
                 <select name="period" required>
                     {% for sy, sm in period_options %}
                     {% set em = 1 if sm == 12 else sm + 1 %}
-                    <option value="{{ sy }}-{{ '%02d'|format(sm) }}" {% if period_value == (sy ~ '-' ~ ('%02d'|format(sm))) %}selected{% endif %}>
+                    <option value="{{ '%02d'|format(sm) }}" {% if period_value.endswith('%02d'|format(sm)) %}selected{% endif %}>
                         {{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][sm-1] }}/{{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][em-1] }}
                     </option>
                     {% endfor %}

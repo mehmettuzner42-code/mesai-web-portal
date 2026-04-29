@@ -1593,8 +1593,10 @@ def admin_import_period_excel():
     for y in years:
         for m in range(1, 13):
             period_options.append((y, m))
-    selected_year = 2026
-    active_start = (2026, 1)
+    selected_year = request.args.get("year", type=int) or 2026
+    if selected_year not in years:
+        selected_year = 2026
+    active_start = (selected_year, 1)
     if request.method == "GET":
         return render_template(
             "admin_import_excel.html",
@@ -1610,7 +1612,7 @@ def admin_import_period_excel():
     if not upload or not upload.filename:
         flash("Lütfen bir Excel dosyası seçin.", "error")
         return redirect(url_for("admin_import_period_excel"))
-    if "-" not in period:
+    if not period:
         flash("Dönem seçimi eksik.", "error")
         return redirect(url_for("admin_import_period_excel"))
     try:
@@ -1618,9 +1620,14 @@ def admin_import_period_excel():
             flash("Yıl seçimi eksik.", "error")
             return redirect(url_for("admin_import_period_excel"))
         # Içe aktarmada secilen yil ana yil olarak baz alinir.
-        # Period degerinden sadece ay bilgisi alinır.
-        parts = period.split("-")
-        sm = int(parts[-1])
+        # Period degeri yeni ekranda sadece ay (01..12) olarak gelir.
+        # Geri uyumluluk icin YYYY-MM formatini da kabul et.
+        if "-" in period:
+            sm = int(period.split("-")[-1])
+        else:
+            sm = int(period)
+        if sm < 1 or sm > 12:
+            raise ValueError("invalid month")
         sy = int(year)
     except Exception:
         flash("Dönem formatı hatalı.", "error")
