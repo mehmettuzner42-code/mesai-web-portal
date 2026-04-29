@@ -41,5 +41,22 @@
         {% endwith %}
         {% block content %}{% endblock %}
     </main>
+    <script>
+    // Tarayici geri/ileri cache'inde bazen modal katmani acik kalip
+    // tum sayfada tiklamayi engelleyebiliyor; sayfa acilisinda temizle.
+    (function () {
+        function resetStuckModalState() {
+            document.querySelectorAll("dialog[open]").forEach((dlg) => {
+                try { dlg.close(); } catch (_e) {}
+            });
+            document.body.style.removeProperty("overflow");
+            document.querySelectorAll(".modal-backdrop, .dialog-backdrop, [data-backdrop='true']").forEach((el) => {
+                el.remove();
+            });
+        }
+        window.addEventListener("pageshow", resetStuckModalState);
+        window.addEventListener("load", resetStuckModalState);
+    })();
+    </script>
 </body>
 </html>
