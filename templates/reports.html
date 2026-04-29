@@ -99,6 +99,12 @@
     </div>
 </div>
 <script>
+document.getElementById("yearSelect").addEventListener("change", function () {
+    const form = document.getElementById("reportsFilterForm");
+    const period = document.getElementById("periodSelect");
+    if (period) period.value = "";
+    form.submit();
+});
 document.getElementById("btnExcelExport").addEventListener("click", function () {
     const year = document.getElementById("yearSelect").value;
     const period = document.getElementById("periodSelect").value;

@@ -2170,6 +2170,8 @@ def reports():
         start_options = [(ps.year, ps.month)]
     years = sorted({period_year(y, m) for (y, m) in start_options}, reverse=True)
     selected_year = request.args.get("year", type=int) or years[0]
+    if selected_year not in years:
+        selected_year = years[0]
     period_options = [(y, m) for (y, m) in start_options if period_year(y, m) == selected_year] or [start_options[0]]
     selected_period = request.args.get("period", "")
     active_start = period_options[0]
