@@ -767,6 +767,8 @@ def admin_users_charts():
                 active_start = (sy, sm)
         except Exception:
             pass
+    # Donem secildiginde yil grafikleri ayni donem yilina otursun.
+    selected_year = period_year(active_start[0], active_start[1])
     p_start, p_end = period_for_start(active_start[0], active_start[1])
 
     users_query = User.query.order_by(User.email.asc())
@@ -897,6 +899,8 @@ def admin_users_charts_export_xlsx():
                 active_start = (sy, sm)
         except Exception:
             pass
+    # Donem secildiginde yil grafikleri ayni donem yilina otursun.
+    selected_year = period_year(active_start[0], active_start[1])
     p_start, p_end = period_for_start(active_start[0], active_start[1])
 
     users_query = User.query.order_by(User.email.asc())
