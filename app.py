@@ -346,7 +346,7 @@ def day_defaults(target_date: date, end_time_override: str = None):
         holiday_lunch = calc_lunch_1230_1330(start, end) or 0.0
         holiday_net = max(0.0, total - holiday_lunch)
         end_minutes = hhmm_to_minutes(end)
-        if end_minutes is not None and end_minutes < (16 * 60):
+        if end_minutes is not None and end_minutes <= (16 * 60):
             pct60 = holiday_net
             pazar, bayram = 0.0, 0.0
         else:
