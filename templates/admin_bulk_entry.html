@@ -44,6 +44,9 @@
         font-weight: 700;
         box-sizing: border-box;
     }
+    .bulk-entry-grid-table tbody tr.active-row td {
+        background: #dbeafe !important;
+    }
 </style>
 <div class="bulk-entry-fullbleed">
     <div class="header-row">
@@ -282,6 +285,25 @@
     restoreSortState();
     persistSortState();
     updateSelectAll();
+
+    const gridTable = document.querySelector(".bulk-entry-grid-table");
+    if (gridTable) {
+        const clearActiveRows = () => {
+            gridTable.querySelectorAll("tbody tr.active-row").forEach((tr) => tr.classList.remove("active-row"));
+        };
+        gridTable.querySelectorAll("tbody tr").forEach((tr) => {
+            tr.querySelectorAll("input[type='text']").forEach((inp) => {
+                inp.addEventListener("focus", () => {
+                    clearActiveRows();
+                    tr.classList.add("active-row");
+                });
+                inp.addEventListener("click", () => {
+                    clearActiveRows();
+                    tr.classList.add("active-row");
+                });
+            });
+        });
+    }
 })();
 </script>
 {% endblock %}
