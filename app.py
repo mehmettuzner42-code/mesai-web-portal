@@ -1158,7 +1158,10 @@ def admin_users_bulk_entry():
                         if extra_hours < 0:
                             continue
                         if base_val in (1.0, 0.5):
-                            end = add_hours_hhmm(start, extra_hours)
+                            # Ozel gunlerde 1/0.5 + X => temel mesai 17:00'a kadar tamamlanmis,
+                            # +X kismi 17:00'dan sonra devam eder.
+                            base_end = str(defaults.get("end") or "17:00")
+                            end = add_hours_hhmm(base_end, extra_hours)
                             pct60 = float(extra_hours)
                             pct15 = float(calc_night_20_06(start, end) or 0.0)
                             if bool(defaults.get("isHoliday")):
@@ -1179,9 +1182,10 @@ def admin_users_bulk_entry():
                                 bayram = float(val)
                             else:
                                 pazar = float(val)
-                            end = start
+                            # Sadece 1/0.5 girildiginde temel vardiya saatlerini koru.
+                            end = str(defaults.get("end") or start)
                             pct60 = 0.0
-                            pct15 = 0.0
+                            pct15 = float(calc_night_20_06(start, end) or 0.0)
                         else:
                             end = add_hours_hhmm(start, val)
                             pct60 = float(val)
