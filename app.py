@@ -382,7 +382,7 @@ def normalize_holiday_rows(rows):
     return [by_day[k] for k in sorted(by_day.keys())]
 
 
-def ensure_holiday_cache_tr(year: int):
+def ensure_holiday_cache_tr(year: int, force_refresh: bool = False):
     y = int(year)
     key = _holiday_cache_key(y)
     fetched_key = _holiday_cache_fetched_key(y)
@@ -404,7 +404,7 @@ def ensure_holiday_cache_tr(year: int):
         except Exception:
             should_refresh = True
 
-    if not should_refresh and current_rows:
+    if (not force_refresh) and (not should_refresh) and current_rows:
         return
 
     try:
@@ -442,16 +442,26 @@ def holiday_kind_tr(target_date: date):
     ensure_holiday_cache_tr(target_date.year)
     key = _holiday_cache_key(target_date.year)
     day_iso = target_date.isoformat()
-    try:
-        rows = json.loads(get_setting_value(key, "[]") or "[]")
-    except Exception:
-        rows = []
-    for r in rows if isinstance(rows, list) else []:
-        if str((r or {}).get("day", "")).strip() == day_iso:
-            kind = str((r or {}).get("kind", "")).strip().lower()
-            if kind in ("full", "half"):
-                return kind
-    return None
+
+    def find_kind():
+        try:
+            rows = json.loads(get_setting_value(key, "[]") or "[]")
+        except Exception:
+            rows = []
+        for r in rows if isinstance(rows, list) else []:
+            if str((r or {}).get("day", "")).strip() == day_iso:
+                kind = str((r or {}).get("kind", "")).strip().lower()
+                if kind in ("full", "half"):
+                    return kind
+        return None
+
+    found = find_kind()
+    if found:
+        return found
+
+    # Cache'de yoksa (eski fallback vb.) internetten zorla bir kez daha çekip tekrar dene.
+    ensure_holiday_cache_tr(target_date.year, force_refresh=True)
+    return find_kind()
 
 
 def day_defaults(target_date: date, end_time_override: str = None):
