@@ -18,6 +18,31 @@
     }
     .bulk-entry-grid-table {
         table-layout: fixed;
+        border-collapse: collapse;
+    }
+    .bulk-entry-grid-table th,
+    .bulk-entry-grid-table td {
+        padding: 2px 3px;
+        font-size: 11px;
+    }
+    .bulk-entry-grid-table th:first-child,
+    .bulk-entry-grid-table td:first-child {
+        width: 150px;
+        min-width: 150px;
+        max-width: 150px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .bulk-entry-grid-table td input[type="text"] {
+        width: 100% !important;
+        min-width: 28px;
+        height: 24px !important;
+        padding: 1px 2px !important;
+        font-size: 11px;
+        text-align: center;
+        font-weight: 700;
+        box-sizing: border-box;
     }
 </style>
 <div class="bulk-entry-fullbleed">
@@ -106,12 +131,7 @@
                         {% set key = 'cell_' ~ row.user.id ~ '_' ~ d.isoformat() %}
                         {% set st = day_styles.get(d.isoformat(), {}) %}
                         <td style="{% if st.is_holiday %}background:#fff3bf;{% elif st.is_weekend %}background:#c7ccd1;{% endif %}">
-                            <input
-                                style="width:44px; height:28px; padding:2px 4px; text-align:center; font-weight:700; box-sizing:border-box;"
-                                type="text"
-                                name="{{ key }}"
-                                value="{{ input_values.get(key, '') }}"
-                            >
+                            <input type="text" name="{{ key }}" value="{{ input_values.get(key, '') }}">
                         </td>
                         {% endfor %}
                     </tr>
