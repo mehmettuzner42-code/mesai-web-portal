@@ -1284,18 +1284,52 @@ def admin_users_bulk_entry():
             .all()
         )
         first_by_day = {}
+
+        def _fmt_cell_num(v: float) -> str:
+            n = float(v or 0)
+            if abs(n) < 1e-9:
+                return "0"
+            if float(n).is_integer():
+                return str(int(n))
+            return f"{n:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+
         for e in existing:
             k = (int(e.user_id), e.work_date.isoformat())
             if k in first_by_day:
                 continue
-            total_h = calc_total_hours(e.start_time, e.end_time) or 0.0
-            first_by_day[k] = total_h
+            first_by_day[k] = {
+                "pct60": float(e.pct60 or 0),
+                "pazar": float(e.pazar or 0),
+                "bayram": float(e.bayram or 0),
+            }
         for uid in selected_user_ids:
             for d in day_columns:
                 k = f"cell_{uid}_{d.isoformat()}"
-                h = first_by_day.get((uid, d.isoformat()))
-                if h and h > 0:
-                    input_values[k] = str(int(h)) if float(h).is_integer() else f"{h:.2f}".rstrip("0").rstrip(".")
+                rec = first_by_day.get((uid, d.isoformat()))
+                if not rec:
+                    continue
+                pct60 = float(rec.get("pct60", 0) or 0)
+                pazar = float(rec.get("pazar", 0) or 0)
+                bayram = float(rec.get("bayram", 0) or 0)
+
+                if pazar > 0:
+                    base = _fmt_cell_num(pazar)
+                    if pct60 > 0:
+                        input_values[k] = f"{base}+{_fmt_cell_num(pct60)}"
+                    else:
+                        input_values[k] = base
+                    continue
+
+                if bayram > 0:
+                    base = _fmt_cell_num(bayram)
+                    if pct60 > 0:
+                        input_values[k] = f"{base}+{_fmt_cell_num(pct60)}"
+                    else:
+                        input_values[k] = base
+                    continue
+
+                if pct60 > 0:
+                    input_values[k] = _fmt_cell_num(pct60)
 
     return render_template(
         "admin_bulk_entry.html",
