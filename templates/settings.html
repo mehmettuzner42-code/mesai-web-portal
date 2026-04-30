@@ -8,7 +8,9 @@
     <h3>Uygulama</h3>
     <div class="links">
         <a class="button-link" href="{{ url_for('download_apk') }}">APK Uygulama İndir</a>
+        <button type="button" id="addToHomeBtn">Ana Ekrana Kısayol</button>
     </div>
+    <p id="addToHomeHelp" style="margin-top:10px; color:#555;"></p>
 </div>
 
 <div class="card">
@@ -47,5 +49,55 @@
         <button type="submit" class="full">Tamam</button>
     </form>
 </div>
+
+<script>
+(() => {
+    const btn = document.getElementById("addToHomeBtn");
+    const help = document.getElementById("addToHomeHelp");
+    if (!btn) return;
+
+    let deferredPrompt = null;
+    const ua = navigator.userAgent || "";
+    const isIos = /iPhone|iPad|iPod/i.test(ua);
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+
+    function setHelp(text) {
+        if (help) help.textContent = text || "";
+    }
+
+    if (isStandalone) {
+        btn.disabled = true;
+        setHelp("Kısayol zaten ana ekrana eklendi.");
+        return;
+    }
+
+    window.addEventListener("beforeinstallprompt", (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        setHelp("Kısayol hazır. Butona basarak ana ekrana ekleyebilirsiniz.");
+    });
+
+    btn.addEventListener("click", async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            try {
+                await deferredPrompt.userChoice;
+            } catch (_e) {
+                // no-op
+            }
+            deferredPrompt = null;
+            return;
+        }
+
+        if (isIos) {
+            alert("iPhone/Safari: Paylaş simgesine dokunun, sonra 'Ana Ekrana Ekle' seçin.");
+            setHelp("iPhone için Safari'de Paylaş > Ana Ekrana Ekle adımlarını kullanın.");
+            return;
+        }
+
+        alert("Tarayıcı bu işlem için doğrudan pencere açmıyor. Menüden 'Ana ekrana ekle' seçeneğini kullanın.");
+    });
+})();
+</script>
 
 {% endblock %}
