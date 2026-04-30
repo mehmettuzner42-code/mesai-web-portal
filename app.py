@@ -308,6 +308,29 @@ def half_holiday_set(year: int):
     return mapping.get(year, set())
 
 
+def religious_full_holiday_set(year: int):
+    # Dini bayram tam gun tarihleri (TR)
+    mapping = {
+        2024: {
+            date(2024, 4, 10), date(2024, 4, 11), date(2024, 4, 12),  # Ramazan
+            date(2024, 6, 16), date(2024, 6, 17), date(2024, 6, 18), date(2024, 6, 19),  # Kurban
+        },
+        2025: {
+            date(2025, 3, 30), date(2025, 3, 31), date(2025, 4, 1),  # Ramazan
+            date(2025, 6, 6), date(2025, 6, 7), date(2025, 6, 8), date(2025, 6, 9),  # Kurban
+        },
+        2026: {
+            date(2026, 3, 20), date(2026, 3, 21), date(2026, 3, 22),  # Ramazan
+            date(2026, 5, 27), date(2026, 5, 28), date(2026, 5, 29), date(2026, 5, 30),  # Kurban
+        },
+        2027: {
+            date(2027, 3, 9), date(2027, 3, 10), date(2027, 3, 11),  # Ramazan
+            date(2027, 5, 16), date(2027, 5, 17), date(2027, 5, 18), date(2027, 5, 19),  # Kurban
+        },
+    }
+    return mapping.get(year, set())
+
+
 def _holiday_cache_key(year: int) -> str:
     return f"holiday_cache_tr_{int(year)}"
 
@@ -410,7 +433,8 @@ def ensure_holiday_cache_tr(year: int, force_refresh: bool = False):
     try:
         rows_remote = normalize_holiday_rows(fetch_public_holidays_tr_rows(y))
         # Sabit gunleri de her zaman dahil et (eksik kaynak verisine karsi).
-        fixed_rows = [{"day": d.isoformat(), "kind": "full", "name": ""} for d in sorted(fixed_holiday_set(y))]
+        full_fallback_days = sorted(fixed_holiday_set(y) | religious_full_holiday_set(y))
+        fixed_rows = [{"day": d.isoformat(), "kind": "full", "name": ""} for d in full_fallback_days]
         fixed_rows.extend([{"day": d.isoformat(), "kind": "half", "name": ""} for d in sorted(half_holiday_set(y))])
         merged_rows = normalize_holiday_rows(rows_remote + fixed_rows)
         if merged_rows:
@@ -427,7 +451,8 @@ def ensure_holiday_cache_tr(year: int, force_refresh: bool = False):
         return
 
     # İlk kurulumda cache boşsa fallback oluştur; sonraki isteklerde tekrar internet denensin.
-    fallback = [{"day": d.isoformat(), "kind": "full", "name": ""} for d in sorted(fixed_holiday_set(y))]
+    full_fallback_days = sorted(fixed_holiday_set(y) | religious_full_holiday_set(y))
+    fallback = [{"day": d.isoformat(), "kind": "full", "name": ""} for d in full_fallback_days]
     fallback.extend([{"day": d.isoformat(), "kind": "half", "name": ""} for d in sorted(half_holiday_set(y))])
     fallback = normalize_holiday_rows(fallback)
     try:
