@@ -247,6 +247,17 @@ def calc_lunch_1230_1330(start_hhmm: str, end_hhmm: str):
     return total / 60.0
 
 
+def add_hours_hhmm(hhmm: str, hours: float) -> str:
+    base = hhmm_to_minutes(hhmm)
+    if base is None:
+        return hhmm
+    mins = int(round(float(hours or 0.0) * 60))
+    end_minutes = (base + mins) % (24 * 60)
+    hh = end_minutes // 60
+    mm = end_minutes % 60
+    return f"{hh:02d}:{mm:02d}"
+
+
 def tr_upper(text: str) -> str:
     # Turkce buyuk harf donusumu: i->I degil, i->I ve ı->I kurallarini dogru uygular.
     if text is None:
@@ -547,8 +558,12 @@ def day_defaults(target_date: date, end_time_override: str = None):
         # - 16:00 ve sonrasında bayram (0,5/1) yazılır, 17:00 sonrası saatler %60'a eklenir.
         holiday_lunch = calc_lunch_1230_1330(start, end) or 0.0
         holiday_net = max(0.0, total - holiday_lunch)
+        start_minutes = hhmm_to_minutes(start)
         end_minutes = hhmm_to_minutes(end)
-        if end_minutes is not None and end_minutes <= (16 * 60):
+        crosses_midnight = (
+            start_minutes is not None and end_minutes is not None and end_minutes <= start_minutes
+        )
+        if (not crosses_midnight) and end_minutes is not None and end_minutes <= (16 * 60):
             pct60 = holiday_net
             pazar, bayram = 0.0, 0.0
         else:
@@ -1053,6 +1068,139 @@ def admin_users():
         period_options=period_options,
         period_value=f"{active_start[0]:04d}-{active_start[1]:02d}",
         sign_fields=sign_fields,
+    )
+
+
+@app.route("/admin/users/bulk-entry", methods=["GET", "POST"])
+@login_required
+@admin_required
+def admin_users_bulk_entry():
+    login_user = session_login_user()
+    users = User.query.order_by(User.created_at.desc()).all()
+    profiles = {p.user_id: p for p in UserProfile.query.all()}
+    rows = [{"user": u, "profile": profiles.get(u.id) or UserProfile(user_id=u.id)} for u in users]
+
+    owner_entries = (
+        OvertimeEntry.query.filter_by(user_id=login_user.id)
+        .order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc())
+        .all()
+    )
+    start_options = sorted({(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) for e in owner_entries}, reverse=True)
+    if not start_options:
+        ps = period_start_for_date(date.today())
+        start_options = [(ps.year, ps.month)]
+    years = sorted({period_year(y, m) for (y, m) in start_options}, reverse=True)
+    selected_year = request.values.get("year", type=int) or years[0]
+    if selected_year not in years:
+        selected_year = years[0]
+    period_options = [(y, m) for (y, m) in start_options if period_year(y, m) == selected_year] or [start_options[0]]
+    period_value = (request.values.get("period") or "").strip()
+    active_start = period_options[0]
+    if period_value and "-" in period_value:
+        try:
+            sy, sm = (int(x) for x in period_value.split("-"))
+            if (sy, sm) in period_options:
+                active_start = (sy, sm)
+        except Exception:
+            pass
+    period_value = f"{active_start[0]:04d}-{active_start[1]:02d}"
+
+    selected_user_ids = {int(v) for v in request.values.getlist("selected_user_ids") if str(v).isdigit()}
+    action = (request.values.get("action") or "").strip().lower()
+    show_grid = action in ("preview", "save")
+
+    p_start, p_end = period_for_start(active_start[0], active_start[1])
+    day_columns = []
+    cur = p_start
+    while cur <= p_end:
+        day_columns.append(cur)
+        cur += timedelta(days=1)
+
+    if show_grid and not selected_user_ids:
+        flash("Lütfen en az bir kullanıcı seçin.", "error")
+        return redirect(url_for("admin_users_bulk_entry", year=selected_year, period=period_value))
+
+    if action == "save":
+        try:
+            OvertimeEntry.query.filter(
+                OvertimeEntry.user_id.in_(list(selected_user_ids)),
+                OvertimeEntry.work_date >= p_start,
+                OvertimeEntry.work_date <= p_end,
+            ).delete(synchronize_session=False)
+            to_insert = []
+            for uid in selected_user_ids:
+                for d in day_columns:
+                    raw = (request.form.get(f"cell_{uid}_{d.isoformat()}") or "").strip().replace(",", ".")
+                    if not raw:
+                        continue
+                    try:
+                        hours = float(raw)
+                    except Exception:
+                        continue
+                    if hours <= 0:
+                        continue
+                    defaults = day_defaults(d)
+                    start = defaults["start"]
+                    end = add_hours_hhmm(start, hours)
+                    calc = day_defaults(d, end)
+                    to_insert.append(
+                        OvertimeEntry(
+                            user_id=uid,
+                            work_date=d,
+                            start_time=start,
+                            end_time=end,
+                            pct60=float(calc.get("pct60", 0) or 0),
+                            pct15=float(calc.get("pct15", 0) or 0),
+                            pazar=float(calc.get("pazar", 0) or 0),
+                            bayram=float(calc.get("bayram", 0) or 0),
+                            description="",
+                        )
+                    )
+            if to_insert:
+                db.session.add_all(to_insert)
+            db.session.commit()
+            flash("Toplu mesai girişi kaydedildi.", "success")
+        except Exception as exc:
+            db.session.rollback()
+            flash(f"Toplu mesai kaydı başarısız: {exc}", "error")
+
+    input_values = {}
+    if show_grid:
+        existing = (
+            OvertimeEntry.query.filter(
+                OvertimeEntry.user_id.in_(list(selected_user_ids)),
+                OvertimeEntry.work_date >= p_start,
+                OvertimeEntry.work_date <= p_end,
+            )
+            .order_by(OvertimeEntry.user_id.asc(), OvertimeEntry.work_date.asc(), OvertimeEntry.id.asc())
+            .all()
+        )
+        first_by_day = {}
+        for e in existing:
+            k = (int(e.user_id), e.work_date.isoformat())
+            if k in first_by_day:
+                continue
+            total_h = calc_total_hours(e.start_time, e.end_time) or 0.0
+            first_by_day[k] = total_h
+        for uid in selected_user_ids:
+            for d in day_columns:
+                k = f"cell_{uid}_{d.isoformat()}"
+                h = first_by_day.get((uid, d.isoformat()))
+                if h and h > 0:
+                    input_values[k] = str(int(h)) if float(h).is_integer() else f"{h:.2f}".rstrip("0").rstrip(".")
+
+    return render_template(
+        "admin_bulk_entry.html",
+        rows=rows,
+        years=years,
+        selected_year=selected_year,
+        period_options=period_options,
+        period_value=period_value,
+        selected_user_ids=selected_user_ids,
+        show_grid=show_grid,
+        day_columns=day_columns,
+        input_values=input_values,
+        format_dmy=format_dmy,
     )
 
 
