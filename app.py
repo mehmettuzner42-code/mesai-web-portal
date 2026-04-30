@@ -230,6 +230,21 @@ def calc_lunch_12_13(start_hhmm: str, end_hhmm: str):
     return total / 60.0
 
 
+def calc_lunch_1230_1330(start_hhmm: str, end_hhmm: str):
+    s = hhmm_to_minutes(start_hhmm)
+    e = hhmm_to_minutes(end_hhmm)
+    if s is None or e is None:
+        return None
+    if e <= s:
+        e += 1440
+    total = 0
+    max_day = (e // 1440) + 1
+    for k in range(max_day + 2):
+        d0 = k * 1440
+        total += overlap(s, e, d0 + 12 * 60 + 30, d0 + 13 * 60 + 30)
+    return total / 60.0
+
+
 def tr_upper(text: str) -> str:
     # Turkce buyuk harf donusumu: i->I degil, i->I ve ı->I kurallarini dogru uygular.
     if text is None:
@@ -296,11 +311,18 @@ def half_holiday_set(year: int):
 def day_defaults(target_date: date, end_time_override: str = None):
     wd = target_date.weekday()  # 0 pazartesi ... 6 pazar
     holidays = fixed_holiday_set(target_date.year)
-    is_holiday = target_date in holidays
+    is_half_holiday = target_date in half_holiday_set(target_date.year)
+    is_full_holiday = target_date in holidays
+    is_holiday = is_full_holiday or is_half_holiday
 
     if is_holiday:
-        start, end = "08:00", "17:00"
-        pazar, bayram = 0.0, 1.0
+        if is_half_holiday:
+            start, end = "13:00", "17:00"
+            default_bayram = 0.5
+        else:
+            start, end = "08:00", "17:00"
+            default_bayram = 1.0
+        pazar, bayram = 0.0, 0.0
     elif wd == 6:  # pazar
         start, end = "08:00", "17:00"
         pazar, bayram = 1.0, 0.0
@@ -317,7 +339,23 @@ def day_defaults(target_date: date, end_time_override: str = None):
     night = calc_night_20_06(start, end) or 0.0
     lunch = calc_lunch_12_13(start, end) or 0.0
     net = max(0.0, total - lunch)
-    if is_holiday or wd == 6:
+    if is_holiday:
+        # Resmi tatilde (yarım/tam gün):
+        # - 16:00'dan önce bitişte bayram yazılmaz, net süre %60 olur.
+        # - 16:00 ve sonrasında bayram (0,5/1) yazılır, 17:00 sonrası saatler %60'a eklenir.
+        holiday_lunch = calc_lunch_1230_1330(start, end) or 0.0
+        holiday_net = max(0.0, total - holiday_lunch)
+        end_minutes = hhmm_to_minutes(end)
+        if end_minutes is not None and end_minutes < (16 * 60):
+            pct60 = holiday_net
+            pazar, bayram = 0.0, 0.0
+        else:
+            base_total = calc_total_hours(start, "17:00") or 0.0
+            base_lunch = calc_lunch_1230_1330(start, "17:00") or 0.0
+            base_net = max(0.0, base_total - base_lunch)
+            pct60 = max(0.0, holiday_net - base_net)
+            pazar, bayram = 0.0, default_bayram
+    elif wd == 6:
         # Pazar/Bayramda 8 saatten az (ogle arasi dusulmus) calisma %60'a yazilir.
         # 8 saat ve ustunde 1 gun pazar/bayram + 8 saat uzeri %60 olur.
         if net < 7.0:
@@ -343,6 +381,7 @@ def day_defaults(target_date: date, end_time_override: str = None):
         "pazar": pazar,
         "bayram": bayram,
         "isHoliday": is_holiday,
+        "isHalfHoliday": is_half_holiday,
         "weekday": wd,
     }
 
