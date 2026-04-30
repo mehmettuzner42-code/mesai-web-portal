@@ -141,6 +141,7 @@ class DelegatedAdminPermission(db.Model):
     can_add_user = db.Column(db.Boolean, default=False, nullable=False)
     can_change_email = db.Column(db.Boolean, default=False, nullable=False)
     can_period_lock = db.Column(db.Boolean, default=False, nullable=False)
+    can_bulk_entry = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -719,6 +720,8 @@ def delegate_can(user: User, capability: str) -> bool:
         return bool(perm.can_change_email)
     if capability == "period_lock":
         return bool(perm.can_period_lock)
+    if capability == "bulk_entry":
+        return bool(perm.can_bulk_entry)
     if capability == "reset_password":
         return bool(perm.can_reset_password)
     if capability == "impersonate":
@@ -994,6 +997,7 @@ def admin_users():
     can_change_email = delegate_can(effective_user, "change_email")
     can_reset_password = delegate_can(effective_user, "reset_password")
     can_period_lock = delegate_can(effective_user, "period_lock")
+    can_bulk_entry = delegate_can(effective_user, "bulk_entry")
     allowed_ids = allowed_user_ids_for(effective_user)
     can_impersonate = delegate_can(effective_user, "impersonate")
     if not can_users_screen:
@@ -1063,6 +1067,7 @@ def admin_users():
         can_filters=can_filters,
         can_add_user=can_add_user,
         can_period_lock=can_period_lock,
+        can_bulk_entry=can_bulk_entry,
         years=years,
         selected_year=selected_year,
         period_options=period_options,
@@ -1073,12 +1078,41 @@ def admin_users():
 
 @app.route("/admin/users/bulk-entry", methods=["GET", "POST"])
 @login_required
-@admin_required
+@admin_or_delegate_required
 def admin_users_bulk_entry():
     login_user = session_login_user()
+    if not delegate_can(login_user, "bulk_entry"):
+        flash("Toplu mesai girişi yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
     users = User.query.order_by(User.created_at.desc()).all()
     profiles = {p.user_id: p for p in UserProfile.query.all()}
     rows = [{"user": u, "profile": profiles.get(u.id) or UserProfile(user_id=u.id)} for u in users]
+
+    sort_key = (request.values.get("sort_key") or "").strip()
+    sort_dir = (request.values.get("sort_dir") or "asc").strip().lower()
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "asc"
+
+    def _row_sort_value(row, key_name: str):
+        p = row.get("profile") or UserProfile()
+        u = row.get("user")
+        if key_name == "sicil_no":
+            return (p.sicil_no or "").strip().lower()
+        if key_name == "ad_soyad":
+            return (p.ad_soyad or "").strip().lower()
+        if key_name == "daire_baskanligi":
+            return (p.daire_baskanligi or "").strip().lower()
+        if key_name == "sube_mudurlugu":
+            return (p.sube_mudurlugu or "").strip().lower()
+        if key_name == "ekip_kodu":
+            return (p.ekip_kodu or "").strip().lower()
+        if key_name == "email":
+            return (u.email or "").strip().lower() if u else ""
+        return ""
+
+    allowed_sort_keys = {"sicil_no", "ad_soyad", "daire_baskanligi", "sube_mudurlugu", "ekip_kodu", "email"}
+    if sort_key in allowed_sort_keys:
+        rows = sorted(rows, key=lambda r: _row_sort_value(r, sort_key), reverse=(sort_dir == "desc"))
 
     owner_work_dates = (
         db.session.query(OvertimeEntry.work_date)
@@ -1276,6 +1310,8 @@ def admin_users_bulk_entry():
         day_styles=day_styles,
         input_values=input_values,
         format_dmy=format_dmy,
+        sort_key=sort_key,
+        sort_dir=sort_dir,
     )
 
 
@@ -1342,6 +1378,7 @@ def admin_backup_export():
                 "can_add_user": bool(p.can_add_user),
                 "can_change_email": bool(p.can_change_email),
                 "can_period_lock": bool(p.can_period_lock),
+                "can_bulk_entry": bool(p.can_bulk_entry),
                 "created_at": dt(p.created_at),
                 "updated_at": dt(p.updated_at),
             }
@@ -1465,6 +1502,7 @@ def admin_backup_import():
                     can_add_user=bool(p.get("can_add_user", False)),
                     can_change_email=bool(p.get("can_change_email", False)),
                     can_period_lock=bool(p.get("can_period_lock", False)),
+                    can_bulk_entry=bool(p.get("can_bulk_entry", False)),
                     created_at=parse_dt(p.get("created_at")) or datetime.utcnow(),
                     updated_at=parse_dt(p.get("updated_at")) or datetime.utcnow(),
                 )
@@ -1900,6 +1938,7 @@ def admin_edit_permission(target_user_id: int):
         can_add_user = request.form.get("can_add_user") == "1"
         can_change_email = request.form.get("can_change_email") == "1"
         can_period_lock = request.form.get("can_period_lock") == "1"
+        can_bulk_entry = request.form.get("can_bulk_entry") == "1"
         if perm is None:
             perm = DelegatedAdminPermission(owner_user_id=founder.id, delegate_user_id=target.id)
             db.session.add(perm)
@@ -1912,6 +1951,7 @@ def admin_edit_permission(target_user_id: int):
         perm.can_add_user = can_add_user
         perm.can_change_email = can_change_email
         perm.can_period_lock = can_period_lock
+        perm.can_bulk_entry = can_bulk_entry
         db.session.commit()
         flash("Yetkiler kaydedildi.", "success")
         return redirect(url_for("admin_authorized_users"))
@@ -1936,6 +1976,7 @@ def admin_edit_permission(target_user_id: int):
         can_add_user=bool(perm.can_add_user) if perm else False,
         can_change_email=bool(perm.can_change_email) if perm else False,
         can_period_lock=bool(perm.can_period_lock) if perm else False,
+        can_bulk_entry=bool(perm.can_bulk_entry) if perm else False,
     )
 
 
@@ -3543,6 +3584,8 @@ def ensure_delegated_permission_columns():
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_change_email BOOLEAN NOT NULL DEFAULT FALSE"))
     if "can_period_lock" not in cols:
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_period_lock BOOLEAN NOT NULL DEFAULT FALSE"))
+    if "can_bulk_entry" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_bulk_entry BOOLEAN NOT NULL DEFAULT FALSE"))
     # eski kolon varsa yeni yapıya taşımak için bir kez eşitle
     if "can_view_passwords" in cols:
         db.session.execute(

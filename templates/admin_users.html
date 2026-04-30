@@ -16,7 +16,11 @@
         {% endif %}
         {% if is_founder %}
         <a class="button-link" href="{{ url_for('admin_authorized_users') }}">Yetkili Kullanıcılar</a>
+        {% endif %}
+        {% if is_founder or can_bulk_entry %}
         <a class="button-link" href="{{ url_for('admin_users_bulk_entry') }}">Toplu Mesai Girişi</a>
+        {% endif %}
+        {% if is_founder %}
         <a class="button-link" href="{{ url_for('admin_backup_export') }}">Yedek Al</a>
         <form id="backupImportForm" method="post" action="{{ url_for('admin_backup_import') }}" enctype="multipart/form-data" style="display:inline;">
             <input id="backupFileInput" type="file" name="backup_file" accept=".json,application/json" style="display:none;">

@@ -8,6 +8,8 @@
 
 <div class="card">
     <form method="post">
+        <input type="hidden" name="sort_key" id="bulkSortKey" value="{{ sort_key or '' }}">
+        <input type="hidden" name="sort_dir" id="bulkSortDir" value="{{ sort_dir or 'asc' }}">
         <div class="admin-export-bar" style="margin-top:10px; margin-bottom:10px;">
             <label>Yıl
                 <select name="year" id="bulkYearSelect">
@@ -34,12 +36,12 @@
                     <tr>
                         <th><input type="checkbox" id="bulkSelectAll" title="Tümünü Seç"></th>
                         <th>Sıra</th>
-                        <th class="sortable" data-sort-key="2">Sicil No</th>
-                        <th class="sortable" data-sort-key="3">Ad Soyad</th>
-                        <th class="sortable" data-sort-key="4">Daire Başkanlığı</th>
-                        <th class="sortable" data-sort-key="5">Şube Müdürlüğü</th>
-                        <th class="sortable" data-sort-key="6">Ekip Kodu</th>
-                        <th class="sortable" data-sort-key="7">E-posta</th>
+                        <th class="sortable" data-sort-col="2" data-sort-key="sicil_no">Sicil No</th>
+                        <th class="sortable" data-sort-col="3" data-sort-key="ad_soyad">Ad Soyad</th>
+                        <th class="sortable" data-sort-col="4" data-sort-key="daire_baskanligi">Daire Başkanlığı</th>
+                        <th class="sortable" data-sort-col="5" data-sort-key="sube_mudurlugu">Şube Müdürlüğü</th>
+                        <th class="sortable" data-sort-col="6" data-sort-key="ekip_kodu">Ekip Kodu</th>
+                        <th class="sortable" data-sort-col="7" data-sort-key="email">E-posta</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -109,7 +111,12 @@
     const selectAll = document.getElementById("bulkSelectAll");
     const sortableHeaders = Array.from(table.querySelectorAll("thead th.sortable"));
     const sortStorageKey = `adminBulkEntrySort:${String({{ session.get('user_id') or 0 }})}`;
-    const sortState = { key: null, dir: "asc" };
+    const sortKeyInput = document.getElementById("bulkSortKey");
+    const sortDirInput = document.getElementById("bulkSortDir");
+    const sortState = {
+        key: (sortKeyInput?.value || "").trim() || null,
+        dir: ((sortDirInput?.value || "asc").trim().toLowerCase() === "desc" ? "desc" : "asc"),
+    };
     const yearSelect = document.getElementById("bulkYearSelect");
     if (!table || !selectAll) return;
     function refreshOrderNumbers() {
@@ -122,6 +129,10 @@
     function readCellText(tr, key) {
         const cell = tr.querySelector(`td:nth-child(${key + 1})`);
         return (cell?.textContent || "").trim();
+    }
+    function colFromSortKey(k) {
+        const th = sortableHeaders.find((h) => String(h.dataset.sortKey) === String(k));
+        return th ? Number(th.dataset.sortCol || 0) : 0;
     }
     function updateSortIndicators() {
         sortableHeaders.forEach((th) => {
@@ -138,18 +149,24 @@
     function persistSortState() {
         if (!sortState.key) {
             localStorage.removeItem(sortStorageKey);
+            if (sortKeyInput) sortKeyInput.value = "";
+            if (sortDirInput) sortDirInput.value = "asc";
             return;
         }
         localStorage.setItem(sortStorageKey, JSON.stringify(sortState));
+        if (sortKeyInput) sortKeyInput.value = sortState.key;
+        if (sortDirInput) sortDirInput.value = sortState.dir;
     }
     function sortRowsByState() {
         if (!sortState.key) return;
+        const col = colFromSortKey(sortState.key);
+        if (!col) return;
         const tbody = table.querySelector("tbody");
         if (!tbody) return;
         const rows = Array.from(tbody.querySelectorAll("tr.selectable-row"));
         rows.sort((a, b) => {
-            const av = readCellText(a, Number(sortState.key));
-            const bv = readCellText(b, Number(sortState.key));
+            const av = readCellText(a, col);
+            const bv = readCellText(b, col);
             const cmp = av.localeCompare(bv, "tr", { numeric: true, sensitivity: "base" });
             return sortState.dir === "asc" ? cmp : -cmp;
         });
@@ -221,6 +238,7 @@
     }
     refreshOrderNumbers();
     restoreSortState();
+    persistSortState();
     updateSelectAll();
 })();
 </script>
