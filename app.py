@@ -1080,12 +1080,22 @@ def admin_users_bulk_entry():
     profiles = {p.user_id: p for p in UserProfile.query.all()}
     rows = [{"user": u, "profile": profiles.get(u.id) or UserProfile(user_id=u.id)} for u in users]
 
-    owner_entries = (
-        OvertimeEntry.query.filter_by(user_id=login_user.id)
-        .order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc())
+    owner_work_dates = (
+        db.session.query(OvertimeEntry.work_date)
+        .filter(OvertimeEntry.user_id == login_user.id)
         .all()
     )
-    start_options = sorted({(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) for e in owner_entries}, reverse=True)
+    start_options = sorted(
+        {
+            (
+                period_start_for_date(wd).year,
+                period_start_for_date(wd).month,
+            )
+            for (wd,) in owner_work_dates
+            if wd is not None
+        },
+        reverse=True,
+    )
     if not start_options:
         ps = period_start_for_date(date.today())
         start_options = [(ps.year, ps.month)]
@@ -1112,10 +1122,12 @@ def admin_users_bulk_entry():
     p_start, p_end = period_for_start(active_start[0], active_start[1])
     day_columns = []
     day_styles = {}
+    day_defaults_map = {}
     cur = p_start
     while cur <= p_end:
         day_columns.append(cur)
         defaults = day_defaults(cur)
+        day_defaults_map[cur.isoformat()] = defaults
         day_styles[cur.isoformat()] = {
             "is_weekend": cur.weekday() >= 5,
             "is_holiday": bool(defaults.get("isHoliday")),
@@ -1139,7 +1151,7 @@ def admin_users_bulk_entry():
                     raw = (request.form.get(f"cell_{uid}_{d.isoformat()}") or "").strip().replace(",", ".")
                     if not raw:
                         continue
-                    defaults = day_defaults(d)
+                    defaults = day_defaults_map.get(d.isoformat()) or day_defaults(d)
                     is_special_day = bool(defaults.get("isHoliday")) or int(defaults.get("weekday", -1)) == 6
                     start = defaults["start"]
                     end = start
@@ -1219,7 +1231,7 @@ def admin_users_bulk_entry():
                         )
                     )
             if to_insert:
-                db.session.add_all(to_insert)
+                db.session.bulk_save_objects(to_insert)
             db.session.commit()
             flash("Toplu mesai girişi kaydedildi.", "success")
         except Exception as exc:
