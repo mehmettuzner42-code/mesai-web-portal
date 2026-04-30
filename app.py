@@ -367,11 +367,32 @@ def fetch_public_holidays_tr_rows(year: int):
     return rows
 
 
+def normalize_holiday_rows(rows):
+    by_day = {}
+    for r in rows if isinstance(rows, list) else []:
+        day = str((r or {}).get("day", "")).strip()
+        kind = str((r or {}).get("kind", "")).strip().lower()
+        name = str((r or {}).get("name", "")).strip()
+        if len(day) != 10 or kind not in ("full", "half"):
+            continue
+        prev = by_day.get(day)
+        # Aynı güne full ve half gelirse full onceliklidir.
+        if prev is None or (prev.get("kind") == "half" and kind == "full"):
+            by_day[day] = {"day": day, "kind": kind, "name": name}
+    return [by_day[k] for k in sorted(by_day.keys())]
+
+
 def ensure_holiday_cache_tr(year: int):
     y = int(year)
     key = _holiday_cache_key(y)
     fetched_key = _holiday_cache_fetched_key(y)
     now_iso = datetime.utcnow().isoformat()
+
+    current_raw = get_setting_value(key, "")
+    try:
+        current_rows = normalize_holiday_rows(json.loads(current_raw or "[]"))
+    except Exception:
+        current_rows = []
 
     # 24 saatten eskiyse internetten yenilemeyi dener; hata olursa eldeki cache korunur.
     fetched_at = get_setting_value(fetched_key, "")
@@ -383,25 +404,35 @@ def ensure_holiday_cache_tr(year: int):
         except Exception:
             should_refresh = True
 
-    if not should_refresh and get_setting_value(key, ""):
+    if not should_refresh and current_rows:
         return
 
     try:
-        rows = fetch_public_holidays_tr_rows(y)
-        if rows:
-            set_setting_value(key, json.dumps(rows, ensure_ascii=False))
+        rows_remote = normalize_holiday_rows(fetch_public_holidays_tr_rows(y))
+        # Sabit gunleri de her zaman dahil et (eksik kaynak verisine karsi).
+        fixed_rows = [{"day": d.isoformat(), "kind": "full", "name": ""} for d in sorted(fixed_holiday_set(y))]
+        fixed_rows.extend([{"day": d.isoformat(), "kind": "half", "name": ""} for d in sorted(half_holiday_set(y))])
+        merged_rows = normalize_holiday_rows(rows_remote + fixed_rows)
+        if merged_rows:
+            if merged_rows != current_rows:
+                set_setting_value(key, json.dumps(merged_rows, ensure_ascii=False))
             set_setting_value(fetched_key, now_iso)
             db.session.commit()
             return
     except Exception:
         db.session.rollback()
 
-    # Ağ hatasında en azından sabit resmi tatil + bilinen yarım günler ile fallback cache üret.
+    # Ağ hatasında mevcut cache varsa koru; ezme.
+    if current_rows:
+        return
+
+    # İlk kurulumda cache boşsa fallback oluştur; sonraki isteklerde tekrar internet denensin.
     fallback = [{"day": d.isoformat(), "kind": "full", "name": ""} for d in sorted(fixed_holiday_set(y))]
     fallback.extend([{"day": d.isoformat(), "kind": "half", "name": ""} for d in sorted(half_holiday_set(y))])
+    fallback = normalize_holiday_rows(fallback)
     try:
         set_setting_value(key, json.dumps(fallback, ensure_ascii=False))
-        set_setting_value(fetched_key, now_iso)
+        # Fallback sonrası fetched_at yazmıyoruz ki internet gelince ilk istekte remote'dan yenilesin.
         db.session.commit()
     except Exception:
         db.session.rollback()
