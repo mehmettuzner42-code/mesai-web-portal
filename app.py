@@ -815,6 +815,226 @@ def admin_users():
     )
 
 
+@app.get("/admin/backup/export")
+@login_required
+@admin_required
+def admin_backup_export():
+    def dt(v):
+        return v.isoformat() if v else None
+
+    payload = {
+        "exported_at": datetime.utcnow().isoformat(),
+        "version": 1,
+        "users": [
+            {
+                "id": u.id,
+                "username": u.username,
+                "email": u.email,
+                "password_hash": u.password_hash,
+                "created_at": dt(u.created_at),
+            }
+            for u in User.query.order_by(User.id.asc()).all()
+        ],
+        "profiles": [
+            {
+                "id": p.id,
+                "user_id": p.user_id,
+                "daire_baskanligi": p.daire_baskanligi,
+                "sube_mudurlugu": p.sube_mudurlugu,
+                "ad_soyad": p.ad_soyad,
+                "sicil_no": p.sicil_no,
+                "ekip_kodu": p.ekip_kodu,
+            }
+            for p in UserProfile.query.order_by(UserProfile.id.asc()).all()
+        ],
+        "entries": [
+            {
+                "id": e.id,
+                "user_id": e.user_id,
+                "work_date": e.work_date.isoformat(),
+                "start_time": e.start_time,
+                "end_time": e.end_time,
+                "pct60": e.pct60,
+                "pct15": e.pct15,
+                "pazar": e.pazar,
+                "bayram": e.bayram,
+                "description": e.description,
+                "created_at": dt(e.created_at),
+                "updated_at": dt(e.updated_at),
+            }
+            for e in OvertimeEntry.query.order_by(OvertimeEntry.id.asc()).all()
+        ],
+        "delegated_permissions": [
+            {
+                "id": p.id,
+                "owner_user_id": p.owner_user_id,
+                "delegate_user_id": p.delegate_user_id,
+                "allowed_user_ids_json": p.allowed_user_ids_json,
+                "can_view_passwords": bool(p.can_view_passwords),
+                "can_reset_password": bool(p.can_reset_password),
+                "can_view_users_screen": bool(p.can_view_users_screen),
+                "can_view_charts": bool(p.can_view_charts),
+                "can_view_filters": bool(p.can_view_filters),
+                "can_add_user": bool(p.can_add_user),
+                "can_change_email": bool(p.can_change_email),
+                "can_period_lock": bool(p.can_period_lock),
+                "created_at": dt(p.created_at),
+                "updated_at": dt(p.updated_at),
+            }
+            for p in DelegatedAdminPermission.query.order_by(DelegatedAdminPermission.id.asc()).all()
+        ],
+        "period_locks": [
+            {
+                "id": r.id,
+                "start_year": r.start_year,
+                "start_month": r.start_month,
+                "is_locked": bool(r.is_locked),
+                "created_at": dt(r.created_at),
+                "updated_at": dt(r.updated_at),
+            }
+            for r in PeriodLock.query.order_by(PeriodLock.id.asc()).all()
+        ],
+        "app_settings": [
+            {
+                "id": s.id,
+                "setting_key": s.setting_key,
+                "setting_value": s.setting_value,
+            }
+            for s in AppSetting.query.order_by(AppSetting.id.asc()).all()
+        ],
+    }
+    mem = io.BytesIO(json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8"))
+    mem.seek(0)
+    name = f"mesai_tam_yedek_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    return send_file(mem, mimetype="application/json", as_attachment=True, download_name=name)
+
+
+@app.post("/admin/backup/import")
+@login_required
+@admin_required
+def admin_backup_import():
+    f = request.files.get("backup_file")
+    if f is None or not (f.filename or "").strip():
+        flash("Yedek dosyası seçin.", "error")
+        return redirect(url_for("admin_users"))
+    try:
+        raw = f.read()
+        payload = json.loads(raw.decode("utf-8-sig"))
+        if not isinstance(payload, dict):
+            raise ValueError("Geçersiz yedek formatı")
+    except Exception as exc:
+        flash(f"Yedek dosyası okunamadı: {exc}", "error")
+        return redirect(url_for("admin_users"))
+
+    def parse_dt(v):
+        t = str(v or "").strip()
+        if not t:
+            return None
+        try:
+            return datetime.fromisoformat(t)
+        except Exception:
+            return None
+
+    try:
+        OvertimeEntry.query.delete(synchronize_session=False)
+        UserProfile.query.delete(synchronize_session=False)
+        DelegatedAdminPermission.query.delete(synchronize_session=False)
+        PeriodLock.query.delete(synchronize_session=False)
+        AppSetting.query.delete(synchronize_session=False)
+        User.query.delete(synchronize_session=False)
+
+        for u in payload.get("users", []):
+            db.session.add(
+                User(
+                    id=int(u.get("id")),
+                    username=str(u.get("username", "")).strip(),
+                    email=str(u.get("email", "")).strip().lower(),
+                    password_hash=str(u.get("password_hash", "")),
+                    created_at=parse_dt(u.get("created_at")) or datetime.utcnow(),
+                )
+            )
+        db.session.flush()
+
+        for p in payload.get("profiles", []):
+            db.session.add(
+                UserProfile(
+                    id=int(p.get("id")),
+                    user_id=int(p.get("user_id")),
+                    daire_baskanligi=str(p.get("daire_baskanligi", "")),
+                    sube_mudurlugu=str(p.get("sube_mudurlugu", "")),
+                    ad_soyad=str(p.get("ad_soyad", "")),
+                    sicil_no=str(p.get("sicil_no", "")),
+                    ekip_kodu=str(p.get("ekip_kodu", "")),
+                )
+            )
+
+        for e in payload.get("entries", []):
+            db.session.add(
+                OvertimeEntry(
+                    id=int(e.get("id")),
+                    user_id=int(e.get("user_id")),
+                    work_date=parse_date(str(e.get("work_date", ""))),
+                    start_time=str(e.get("start_time", "")),
+                    end_time=str(e.get("end_time", "")),
+                    pct60=float(e.get("pct60", 0) or 0),
+                    pct15=float(e.get("pct15", 0) or 0),
+                    pazar=float(e.get("pazar", 0) or 0),
+                    bayram=float(e.get("bayram", 0) or 0),
+                    description=str(e.get("description", "")),
+                    created_at=parse_dt(e.get("created_at")) or datetime.utcnow(),
+                    updated_at=parse_dt(e.get("updated_at")) or datetime.utcnow(),
+                )
+            )
+
+        for p in payload.get("delegated_permissions", []):
+            db.session.add(
+                DelegatedAdminPermission(
+                    id=int(p.get("id")),
+                    owner_user_id=int(p.get("owner_user_id")),
+                    delegate_user_id=int(p.get("delegate_user_id")),
+                    allowed_user_ids_json=str(p.get("allowed_user_ids_json", "[]")),
+                    can_view_passwords=bool(p.get("can_view_passwords", False)),
+                    can_reset_password=bool(p.get("can_reset_password", False)),
+                    can_view_users_screen=bool(p.get("can_view_users_screen", False)),
+                    can_view_charts=bool(p.get("can_view_charts", False)),
+                    can_view_filters=bool(p.get("can_view_filters", False)),
+                    can_add_user=bool(p.get("can_add_user", False)),
+                    can_change_email=bool(p.get("can_change_email", False)),
+                    can_period_lock=bool(p.get("can_period_lock", False)),
+                    created_at=parse_dt(p.get("created_at")) or datetime.utcnow(),
+                    updated_at=parse_dt(p.get("updated_at")) or datetime.utcnow(),
+                )
+            )
+
+        for r in payload.get("period_locks", []):
+            db.session.add(
+                PeriodLock(
+                    id=int(r.get("id")),
+                    start_year=int(r.get("start_year")),
+                    start_month=int(r.get("start_month")),
+                    is_locked=bool(r.get("is_locked", False)),
+                    created_at=parse_dt(r.get("created_at")) or datetime.utcnow(),
+                    updated_at=parse_dt(r.get("updated_at")) or datetime.utcnow(),
+                )
+            )
+
+        for s in payload.get("app_settings", []):
+            db.session.add(
+                AppSetting(
+                    id=int(s.get("id")),
+                    setting_key=str(s.get("setting_key", "")),
+                    setting_value=str(s.get("setting_value", "")),
+                )
+            )
+
+        db.session.commit()
+        flash("Tam yedek içe aktarıldı. Tüm veriler geri yüklendi.", "success")
+    except Exception as exc:
+        db.session.rollback()
+        flash(f"Yedek içe aktarma başarısız: {exc}", "error")
+    return redirect(url_for("admin_users"))
+
+
 @app.get("/admin/users/charts")
 @login_required
 @admin_or_delegate_required
