@@ -1,10 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="header-row">
-    <div class="admin-top-actions">
-        <h2>Toplu Mesai Girişi</h2>
+<style>
+    .bulk-entry-fullbleed {
+        width: 100vw;
+        max-width: 100vw;
+        margin-left: calc(50% - 50vw);
+        margin-right: calc(50% - 50vw);
+        padding-left: 8px;
+        padding-right: 8px;
+        box-sizing: border-box;
+    }
+    .bulk-entry-fullbleed .table-wrap {
+        width: 100%;
+    }
+    .bulk-entry-fullbleed .compact-table {
+        width: 100%;
+    }
+    .bulk-entry-grid-table {
+        table-layout: fixed;
+    }
+</style>
+<div class="bulk-entry-fullbleed">
+    <div class="header-row">
+        <div class="admin-top-actions">
+            <h2>Toplu Mesai Girişi</h2>
+        </div>
     </div>
-</div>
 
 <div class="card">
     <form method="post">
@@ -67,7 +88,7 @@
 
         {% if show_grid %}
         <div class="table-wrap recent-scroll" style="margin-top:12px;">
-            <table class="compact-table">
+            <table class="compact-table bulk-entry-grid-table">
                 <thead>
                     <tr>
                         <th>Ad Soyad</th>
@@ -103,6 +124,7 @@
         </div>
         {% endif %}
     </form>
+</div>
 </div>
 
 <script>
