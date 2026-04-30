@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import smtplib
+import threading
 import urllib.error
 import urllib.request
 from datetime import date, datetime, timedelta
@@ -69,6 +70,7 @@ db = SQLAlchemy(app)
 token_serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
 _RATE_LIMIT_STATE = {}
 FOUNDER_EMAIL = "mehmettuzner42@gmail.com"
+_HOLIDAY_BG_REFRESH_RUNNING = set()
 
 
 @app.get("/healthz")
@@ -405,7 +407,7 @@ def normalize_holiday_rows(rows):
     return [by_day[k] for k in sorted(by_day.keys())]
 
 
-def ensure_holiday_cache_tr(year: int, force_refresh: bool = False):
+def ensure_holiday_cache_tr(year: int, force_refresh: bool = False, allow_network: bool = True):
     y = int(year)
     key = _holiday_cache_key(y)
     fetched_key = _holiday_cache_fetched_key(y)
@@ -430,41 +432,62 @@ def ensure_holiday_cache_tr(year: int, force_refresh: bool = False):
     if (not force_refresh) and (not should_refresh) and current_rows:
         return
 
-    try:
-        rows_remote = normalize_holiday_rows(fetch_public_holidays_tr_rows(y))
-        # Sabit gunleri de her zaman dahil et (eksik kaynak verisine karsi).
-        full_fallback_days = sorted(fixed_holiday_set(y) | religious_full_holiday_set(y))
-        fixed_rows = [{"day": d.isoformat(), "kind": "full", "name": ""} for d in full_fallback_days]
-        fixed_rows.extend([{"day": d.isoformat(), "kind": "half", "name": ""} for d in sorted(half_holiday_set(y))])
-        merged_rows = normalize_holiday_rows(rows_remote + fixed_rows)
-        if merged_rows:
-            if merged_rows != current_rows:
-                set_setting_value(key, json.dumps(merged_rows, ensure_ascii=False))
-            set_setting_value(fetched_key, now_iso)
-            db.session.commit()
-            return
-    except Exception:
-        db.session.rollback()
+    if allow_network:
+        try:
+            rows_remote = normalize_holiday_rows(fetch_public_holidays_tr_rows(y))
+            # Sabit gunleri de her zaman dahil et (eksik kaynak verisine karsi).
+            full_fallback_days = sorted(fixed_holiday_set(y) | religious_full_holiday_set(y))
+            fixed_rows = [{"day": d.isoformat(), "kind": "full", "name": ""} for d in full_fallback_days]
+            fixed_rows.extend([{"day": d.isoformat(), "kind": "half", "name": ""} for d in sorted(half_holiday_set(y))])
+            merged_rows = normalize_holiday_rows(rows_remote + fixed_rows)
+            if merged_rows:
+                if merged_rows != current_rows:
+                    set_setting_value(key, json.dumps(merged_rows, ensure_ascii=False))
+                set_setting_value(fetched_key, now_iso)
+                db.session.commit()
+                return
+        except Exception:
+            db.session.rollback()
 
-    # Ağ hatasında mevcut cache varsa koru; ezme.
+    # Ağ yokken mevcut cache varsa direkt kullan.
     if current_rows:
         return
 
-    # İlk kurulumda cache boşsa fallback oluştur; sonraki isteklerde tekrar internet denensin.
+    # İlk kurulumda cache boşsa fallback oluştur; internet geldiğinde arka planda güncellenir.
     full_fallback_days = sorted(fixed_holiday_set(y) | religious_full_holiday_set(y))
     fallback = [{"day": d.isoformat(), "kind": "full", "name": ""} for d in full_fallback_days]
     fallback.extend([{"day": d.isoformat(), "kind": "half", "name": ""} for d in sorted(half_holiday_set(y))])
     fallback = normalize_holiday_rows(fallback)
     try:
         set_setting_value(key, json.dumps(fallback, ensure_ascii=False))
-        # Fallback sonrası fetched_at yazmıyoruz ki internet gelince ilk istekte remote'dan yenilesin.
         db.session.commit()
     except Exception:
         db.session.rollback()
 
 
+def _refresh_holiday_cache_tr_bg(year: int):
+    y = int(year)
+    try:
+        with app.app_context():
+            ensure_holiday_cache_tr(y, allow_network=True)
+    finally:
+        _HOLIDAY_BG_REFRESH_RUNNING.discard(y)
+
+
+def schedule_holiday_cache_refresh(year: int):
+    y = int(year)
+    if y in _HOLIDAY_BG_REFRESH_RUNNING:
+        return
+    _HOLIDAY_BG_REFRESH_RUNNING.add(y)
+    t = threading.Thread(target=_refresh_holiday_cache_tr_bg, args=(y,), daemon=True)
+    t.start()
+
+
 def holiday_kind_tr(target_date: date):
-    ensure_holiday_cache_tr(target_date.year)
+    # Hesaplama sırasında internet bekletmesi olmasın: sadece kayıtlı cache/fallback kullan.
+    ensure_holiday_cache_tr(target_date.year, allow_network=False)
+    # Güncelleme ihtiyacı varsa arka planda dene.
+    schedule_holiday_cache_refresh(target_date.year)
     key = _holiday_cache_key(target_date.year)
     day_iso = target_date.isoformat()
 
@@ -484,9 +507,7 @@ def holiday_kind_tr(target_date: date):
     if found:
         return found
 
-    # Cache'de yoksa (eski fallback vb.) internetten zorla bir kez daha çekip tekrar dene.
-    ensure_holiday_cache_tr(target_date.year, force_refresh=True)
-    return find_kind()
+    return None
 
 
 def day_defaults(target_date: date, end_time_override: str = None):
