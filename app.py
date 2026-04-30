@@ -308,11 +308,126 @@ def half_holiday_set(year: int):
     return mapping.get(year, set())
 
 
+def _holiday_cache_key(year: int) -> str:
+    return f"holiday_cache_tr_{int(year)}"
+
+
+def _holiday_cache_fetched_key(year: int) -> str:
+    return f"holiday_cache_tr_fetched_{int(year)}"
+
+
+def fetch_public_holidays_tr_rows(year: int):
+    y = int(year)
+    url = f"https://date.nager.at/api/v3/PublicHolidays/{y}/TR"
+    req = urllib.request.Request(url, headers={"User-Agent": "MesaiWeb/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        raw = resp.read().decode("utf-8")
+    arr = json.loads(raw)
+    if not isinstance(arr, list):
+        return []
+
+    full = {}
+    ramazan_start = None
+    kurban_start = None
+    for item in arr:
+        if not isinstance(item, dict):
+            continue
+        day = str(item.get("date", "")).strip()
+        if len(day) != 10:
+            continue
+        name = str(item.get("localName") or item.get("name") or "").strip()
+        full[day] = name
+        low = name.lower()
+        if ("ramazan" in low) or ("eid al-fitr" in low) or ("şeker" in low):
+            ramazan_start = day if (ramazan_start is None or day < ramazan_start) else ramazan_start
+        if ("kurban" in low) or ("eid al-adha" in low):
+            kurban_start = day if (kurban_start is None or day < kurban_start) else kurban_start
+
+    rows = [{"day": day, "kind": "full", "name": name} for day, name in full.items()]
+
+    if f"{y:04d}-10-29" in full:
+        rows.append({"day": f"{y:04d}-10-28", "kind": "half", "name": "Cumhuriyet Bayramı Arefesi"})
+
+    def minus_one_day(ymd: str):
+        try:
+            d = datetime.strptime(ymd, "%Y-%m-%d").date()
+            return (d - timedelta(days=1)).isoformat()
+        except Exception:
+            return ymd
+
+    if ramazan_start:
+        eve = minus_one_day(ramazan_start)
+        if eve.startswith(f"{y:04d}-"):
+            rows.append({"day": eve, "kind": "half", "name": "Ramazan Bayramı Arefesi"})
+    if kurban_start:
+        eve = minus_one_day(kurban_start)
+        if eve.startswith(f"{y:04d}-"):
+            rows.append({"day": eve, "kind": "half", "name": "Kurban Bayramı Arefesi"})
+
+    return rows
+
+
+def ensure_holiday_cache_tr(year: int):
+    y = int(year)
+    key = _holiday_cache_key(y)
+    fetched_key = _holiday_cache_fetched_key(y)
+    now_iso = datetime.utcnow().isoformat()
+
+    # 24 saatten eskiyse internetten yenilemeyi dener; hata olursa eldeki cache korunur.
+    fetched_at = get_setting_value(fetched_key, "")
+    should_refresh = True
+    if fetched_at:
+        try:
+            last = datetime.fromisoformat(fetched_at)
+            should_refresh = (datetime.utcnow() - last).total_seconds() > 24 * 3600
+        except Exception:
+            should_refresh = True
+
+    if not should_refresh and get_setting_value(key, ""):
+        return
+
+    try:
+        rows = fetch_public_holidays_tr_rows(y)
+        if rows:
+            set_setting_value(key, json.dumps(rows, ensure_ascii=False))
+            set_setting_value(fetched_key, now_iso)
+            db.session.commit()
+            return
+    except Exception:
+        db.session.rollback()
+
+    # Ağ hatasında en azından sabit resmi tatil + bilinen yarım günler ile fallback cache üret.
+    fallback = [{"day": d.isoformat(), "kind": "full", "name": ""} for d in sorted(fixed_holiday_set(y))]
+    fallback.extend([{"day": d.isoformat(), "kind": "half", "name": ""} for d in sorted(half_holiday_set(y))])
+    try:
+        set_setting_value(key, json.dumps(fallback, ensure_ascii=False))
+        set_setting_value(fetched_key, now_iso)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def holiday_kind_tr(target_date: date):
+    ensure_holiday_cache_tr(target_date.year)
+    key = _holiday_cache_key(target_date.year)
+    day_iso = target_date.isoformat()
+    try:
+        rows = json.loads(get_setting_value(key, "[]") or "[]")
+    except Exception:
+        rows = []
+    for r in rows if isinstance(rows, list) else []:
+        if str((r or {}).get("day", "")).strip() == day_iso:
+            kind = str((r or {}).get("kind", "")).strip().lower()
+            if kind in ("full", "half"):
+                return kind
+    return None
+
+
 def day_defaults(target_date: date, end_time_override: str = None):
     wd = target_date.weekday()  # 0 pazartesi ... 6 pazar
-    holidays = fixed_holiday_set(target_date.year)
-    is_half_holiday = target_date in half_holiday_set(target_date.year)
-    is_full_holiday = target_date in holidays
+    kind = holiday_kind_tr(target_date)
+    is_half_holiday = kind == "half"
+    is_full_holiday = kind == "full"
     is_holiday = is_full_holiday or is_half_holiday
 
     if is_holiday:
