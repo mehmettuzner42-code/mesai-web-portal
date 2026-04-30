@@ -1111,9 +1111,15 @@ def admin_users_bulk_entry():
 
     p_start, p_end = period_for_start(active_start[0], active_start[1])
     day_columns = []
+    day_styles = {}
     cur = p_start
     while cur <= p_end:
         day_columns.append(cur)
+        defaults = day_defaults(cur)
+        day_styles[cur.isoformat()] = {
+            "is_weekend": cur.weekday() >= 5,
+            "is_holiday": bool(defaults.get("isHoliday")),
+        }
         cur += timedelta(days=1)
 
     if show_grid and not selected_user_ids:
@@ -1133,26 +1139,78 @@ def admin_users_bulk_entry():
                     raw = (request.form.get(f"cell_{uid}_{d.isoformat()}") or "").strip().replace(",", ".")
                     if not raw:
                         continue
-                    try:
-                        hours = float(raw)
-                    except Exception:
-                        continue
-                    if hours <= 0:
-                        continue
                     defaults = day_defaults(d)
+                    is_special_day = bool(defaults.get("isHoliday")) or int(defaults.get("weekday", -1)) == 6
                     start = defaults["start"]
-                    end = add_hours_hhmm(start, hours)
-                    calc = day_defaults(d, end)
+                    end = start
+                    pct60 = 0.0
+                    pct15 = 0.0
+                    pazar = 0.0
+                    bayram = 0.0
+
+                    if is_special_day and "+" in raw:
+                        left, right = (s.strip() for s in raw.split("+", 1))
+                        try:
+                            base_val = float(left)
+                            extra_hours = float(right)
+                        except Exception:
+                            continue
+                        if extra_hours < 0:
+                            continue
+                        if base_val in (1.0, 0.5):
+                            end = add_hours_hhmm(start, extra_hours)
+                            pct60 = float(extra_hours)
+                            pct15 = float(calc_night_20_06(start, end) or 0.0)
+                            if bool(defaults.get("isHoliday")):
+                                bayram = float(base_val)
+                            else:
+                                pazar = float(base_val)
+                        else:
+                            continue
+                    elif is_special_day:
+                        try:
+                            val = float(raw)
+                        except Exception:
+                            continue
+                        if val <= 0:
+                            continue
+                        if val in (1.0, 0.5):
+                            if bool(defaults.get("isHoliday")):
+                                bayram = float(val)
+                            else:
+                                pazar = float(val)
+                            end = start
+                            pct60 = 0.0
+                            pct15 = 0.0
+                        else:
+                            end = add_hours_hhmm(start, val)
+                            pct60 = float(val)
+                            pct15 = float(calc_night_20_06(start, end) or 0.0)
+                            pazar = 0.0
+                            bayram = 0.0
+                    else:
+                        try:
+                            hours = float(raw)
+                        except Exception:
+                            continue
+                        if hours <= 0:
+                            continue
+                        end = add_hours_hhmm(start, hours)
+                        calc = day_defaults(d, end)
+                        pct60 = float(calc.get("pct60", 0) or 0)
+                        pct15 = float(calc.get("pct15", 0) or 0)
+                        pazar = float(calc.get("pazar", 0) or 0)
+                        bayram = float(calc.get("bayram", 0) or 0)
                     to_insert.append(
                         OvertimeEntry(
                             user_id=uid,
                             work_date=d,
                             start_time=start,
                             end_time=end,
-                            pct60=float(calc.get("pct60", 0) or 0),
-                            pct15=float(calc.get("pct15", 0) or 0),
-                            pazar=float(calc.get("pazar", 0) or 0),
-                            bayram=float(calc.get("bayram", 0) or 0),
+                            pct60=pct60,
+                            pct15=pct15,
+                            pazar=pazar,
+                            bayram=bayram,
                             description="",
                         )
                     )
@@ -1199,6 +1257,7 @@ def admin_users_bulk_entry():
         selected_user_ids=selected_user_ids,
         show_grid=show_grid,
         day_columns=day_columns,
+        day_styles=day_styles,
         input_values=input_values,
         format_dmy=format_dmy,
     )

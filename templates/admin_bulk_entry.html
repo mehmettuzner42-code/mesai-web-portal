@@ -3,7 +3,6 @@
 <div class="header-row">
     <div class="admin-top-actions">
         <h2>Toplu Mesai Girişi</h2>
-        <a class="button-link" href="{{ url_for('admin_users') }}">Tüm Kişilere Dön</a>
     </div>
 </div>
 
@@ -15,12 +14,12 @@
                     <tr>
                         <th><input type="checkbox" id="bulkSelectAll" title="Tümünü Seç"></th>
                         <th>Sıra</th>
-                        <th>Sicil No</th>
-                        <th>Ad Soyad</th>
-                        <th>Daire Başkanlığı</th>
-                        <th>Şube Müdürlüğü</th>
-                        <th>Ekip Kodu</th>
-                        <th>E-posta</th>
+                        <th class="sortable" data-sort-key="2">Sicil No</th>
+                        <th class="sortable" data-sort-key="3">Ad Soyad</th>
+                        <th class="sortable" data-sort-key="4">Daire Başkanlığı</th>
+                        <th class="sortable" data-sort-key="5">Şube Müdürlüğü</th>
+                        <th class="sortable" data-sort-key="6">Ekip Kodu</th>
+                        <th class="sortable" data-sort-key="7">E-posta</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -68,7 +67,8 @@
                     <tr>
                         <th>Ad Soyad</th>
                         {% for d in day_columns %}
-                        <th title="{{ format_dmy(d) }}">{{ d.day }}</th>
+                        {% set st = day_styles.get(d.isoformat(), {}) %}
+                        <th title="{{ format_dmy(d) }}" style="{% if st.is_holiday %}background:#fff3bf;{% elif st.is_weekend %}background:#eceff1;{% endif %}">{{ d.day }}</th>
                         {% endfor %}
                     </tr>
                 </thead>
@@ -78,7 +78,15 @@
                         <td>{{ row.profile.ad_soyad or row.user.email }}</td>
                         {% for d in day_columns %}
                         {% set key = 'cell_' ~ row.user.id ~ '_' ~ d.isoformat() %}
-                        <td><input style="width:58px;" type="text" name="{{ key }}" value="{{ input_values.get(key, '') }}"></td>
+                        {% set st = day_styles.get(d.isoformat(), {}) %}
+                        <td style="{% if st.is_holiday %}background:#fff3bf;{% elif st.is_weekend %}background:#eceff1;{% endif %}">
+                            <input
+                                style="width:44px; height:28px; padding:2px 4px; text-align:center; font-weight:700; box-sizing:border-box;"
+                                type="text"
+                                name="{{ key }}"
+                                value="{{ input_values.get(key, '') }}"
+                            >
+                        </td>
                         {% endfor %}
                     </tr>
                     {% endfor %}
@@ -96,6 +104,10 @@
 (() => {
     const table = document.getElementById("bulkUsersTable");
     const selectAll = document.getElementById("bulkSelectAll");
+    const sortableHeaders = Array.from(table.querySelectorAll("thead th.sortable"));
+    const sortStorageKey = `adminBulkEntrySort:${String({{ session.get('user_id') or 0 }})}`;
+    const sortState = { key: null, dir: "asc" };
+    const yearSelect = document.getElementById("bulkYearSelect");
     if (!table || !selectAll) return;
     function refreshOrderNumbers() {
         let i = 1;
@@ -103,6 +115,67 @@
             const cell = tr.querySelector(".row-order-cell");
             if (cell) cell.textContent = String(i++);
         });
+    }
+    function readCellText(tr, key) {
+        const cell = tr.querySelector(`td:nth-child(${key + 1})`);
+        return (cell?.textContent || "").trim();
+    }
+    function updateSortIndicators() {
+        sortableHeaders.forEach((th) => {
+            const baseLabel = (th.dataset.label || th.textContent || "").trim();
+            th.dataset.label = baseLabel;
+            th.style.cursor = "pointer";
+            if (String(sortState.key) !== String(th.dataset.sortKey)) {
+                th.textContent = baseLabel;
+            } else {
+                th.textContent = `${baseLabel} ${sortState.dir === "asc" ? "▲" : "▼"}`;
+            }
+        });
+    }
+    function persistSortState() {
+        if (!sortState.key) {
+            localStorage.removeItem(sortStorageKey);
+            return;
+        }
+        localStorage.setItem(sortStorageKey, JSON.stringify(sortState));
+    }
+    function sortRowsByState() {
+        if (!sortState.key) return;
+        const tbody = table.querySelector("tbody");
+        if (!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll("tr.selectable-row"));
+        rows.sort((a, b) => {
+            const av = readCellText(a, Number(sortState.key));
+            const bv = readCellText(b, Number(sortState.key));
+            const cmp = av.localeCompare(bv, "tr", { numeric: true, sensitivity: "base" });
+            return sortState.dir === "asc" ? cmp : -cmp;
+        });
+        rows.forEach((tr) => tbody.appendChild(tr));
+        refreshOrderNumbers();
+    }
+    function applySort(key, dir) {
+        sortState.key = String(key);
+        sortState.dir = dir === "desc" ? "desc" : "asc";
+        sortRowsByState();
+        updateSortIndicators();
+        persistSortState();
+    }
+    function restoreSortState() {
+        try {
+            const raw = localStorage.getItem(sortStorageKey);
+            if (!raw) {
+                updateSortIndicators();
+                return;
+            }
+            const parsed = JSON.parse(raw);
+            if (!parsed || !parsed.key) {
+                updateSortIndicators();
+                return;
+            }
+            applySort(parsed.key, parsed.dir || "asc");
+        } catch (_e) {
+            updateSortIndicators();
+        }
     }
     function updateSelectAll() {
         const cbs = Array.from(table.querySelectorAll("input.row-select"));
@@ -115,7 +188,36 @@
         updateSelectAll();
     });
     table.querySelectorAll("input.row-select").forEach((cb) => cb.addEventListener("change", updateSelectAll));
+    sortableHeaders.forEach((th) => {
+        th.addEventListener("click", () => {
+            const key = th.dataset.sortKey;
+            if (!key) return;
+            const nextDir =
+                String(sortState.key) === String(key) && sortState.dir === "asc"
+                    ? "desc"
+                    : "asc";
+            applySort(key, nextDir);
+        });
+    });
+    if (yearSelect) {
+        yearSelect.addEventListener("change", () => {
+            const form = yearSelect.closest("form");
+            if (!form) return;
+            const actionInput = form.querySelector("input[name='action']");
+            if (actionInput) {
+                actionInput.value = "preview";
+            } else {
+                const hidden = document.createElement("input");
+                hidden.type = "hidden";
+                hidden.name = "action";
+                hidden.value = "preview";
+                form.appendChild(hidden);
+            }
+            form.submit();
+        });
+    }
     refreshOrderNumbers();
+    restoreSortState();
     updateSelectAll();
 })();
 </script>
