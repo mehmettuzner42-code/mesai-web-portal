@@ -204,6 +204,12 @@
     const chartsPeriod = document.getElementById("chartsPeriod");
     const chartsFilterForm = document.getElementById("chartsFilterForm");
 
+    function updateRowHighlight(checkbox) {
+        const tr = checkbox && checkbox.closest("tr");
+        if (!tr) return;
+        tr.classList.toggle("selected-row", !!checkbox.checked);
+    }
+
     function uniqueSelectValues(selectEl) {
         const seen = new Set();
         const opts = Array.from(selectEl.options);
@@ -348,10 +354,19 @@
     });
 
     selectAll.addEventListener("change", function() {
-        visibleCheckboxes().forEach((cb) => { cb.checked = selectAll.checked; });
+        visibleCheckboxes().forEach((cb) => {
+            cb.checked = selectAll.checked;
+            updateRowHighlight(cb);
+        });
         updateSelectAllState();
     });
-    checkboxes.forEach((cb) => cb.addEventListener("change", updateSelectAllState));
+    checkboxes.forEach((cb) => {
+        cb.addEventListener("change", () => {
+            updateRowHighlight(cb);
+            updateSelectAllState();
+        });
+        updateRowHighlight(cb);
+    });
     restoreSortState();
     applyFilters();
 
