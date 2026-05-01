@@ -1,13 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="header-row">
-    <h2>Yetkili Kullanıcılar</h2>
-    <a class="button-link" href="{{ url_for('admin_users') }}">Tüm Kişilere Dön</a>
-</div>
+<style>
+    .authorized-fullbleed {
+        width: 100vw;
+        max-width: 100vw;
+        margin-left: calc(50% - 50vw);
+        margin-right: calc(50% - 50vw);
+        padding-left: 8px;
+        padding-right: 8px;
+        box-sizing: border-box;
+    }
+    .authorized-fullbleed .table-wrap {
+        width: 100%;
+    }
+    .authorized-fullbleed .compact-table {
+        width: 100%;
+    }
+</style>
+<div class="authorized-fullbleed">
+    <div class="header-row">
+        <h2>Yetkili Kullanıcılar</h2>
+        <a class="button-link" href="{{ url_for('admin_users') }}">Tüm Kişilere Dön</a>
+    </div>
 
-<div class="card">
-    <div class="table-wrap">
-        <table class="compact-table">
+    <div class="card">
+        <div class="table-wrap">
+            <table class="compact-table">
             <thead>
                 <tr>
                     <th>E-posta</th>
@@ -49,7 +67,8 @@
                 <tr><td colspan="12">Henüz yetki verilen kullanıcı yok.</td></tr>
                 {% endfor %}
             </tbody>
-        </table>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}
