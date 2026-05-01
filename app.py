@@ -71,6 +71,13 @@ token_serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
 _RATE_LIMIT_STATE = {}
 FOUNDER_EMAIL = "mehmettuzner42@gmail.com"
 _HOLIDAY_BG_REFRESH_RUNNING = set()
+DAIRE_OPTIONS = ["Abone İşleri Dairesi Başkanlığı"]
+SUBE_OPTIONS = [
+    "Sayaç İşleri Şube Müdürlüğü",
+    "Abone İşleri Şube Müdürlüğü",
+    "Müşteri Hizmetleri Şube Müdürlüğü",
+    "Tahakkuk İşleri Şube Müdürlüğü",
+]
 
 
 @app.get("/healthz")
@@ -144,8 +151,22 @@ class DelegatedAdminPermission(db.Model):
     can_period_lock = db.Column(db.Boolean, default=False, nullable=False)
     can_bulk_entry = db.Column(db.Boolean, default=False, nullable=False)
     can_view_terminated_users = db.Column(db.Boolean, default=False, nullable=False)
+    can_unit_change = db.Column(db.Boolean, default=False, nullable=False)
+    scope_daire_baskanligi = db.Column(db.String(255), default="", nullable=False)
+    scope_sube_mudurlugu = db.Column(db.String(255), default="", nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class UnitChange(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    transfer_date = db.Column(db.Date, nullable=False, index=True)
+    from_daire_baskanligi = db.Column(db.String(255), default="", nullable=False)
+    from_sube_mudurlugu = db.Column(db.String(255), default="", nullable=False)
+    to_daire_baskanligi = db.Column(db.String(255), default="", nullable=False)
+    to_sube_mudurlugu = db.Column(db.String(255), default="", nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 def fmt_num(value: float) -> str:
@@ -734,6 +755,8 @@ def delegate_can(user: User, capability: str) -> bool:
         return bool(perm.can_bulk_entry)
     if capability == "terminated_users":
         return bool(perm.can_view_terminated_users)
+    if capability == "unit_change":
+        return bool(perm.can_unit_change)
     if capability == "reset_password":
         return bool(perm.can_reset_password)
     if capability == "impersonate":
@@ -766,6 +789,59 @@ def include_user_for_selected_period(profile: UserProfile, period_start_year: in
         return True
     end_ps = period_start_for_date(profile.employment_end_date)
     return (int(period_start_year), int(period_start_month)) <= (int(end_ps.year), int(end_ps.month))
+
+
+def unit_at_date_for_user(user_id: int, target_date: date, profile: UserProfile = None):
+    p = profile or UserProfile.query.filter_by(user_id=user_id).first() or UserProfile(user_id=user_id)
+    changes = UnitChange.query.filter_by(user_id=user_id).order_by(UnitChange.transfer_date.asc(), UnitChange.id.asc()).all()
+    if not changes:
+        return {
+            "daire_baskanligi": (p.daire_baskanligi or "").strip(),
+            "sube_mudurlugu": (p.sube_mudurlugu or "").strip(),
+        }
+    current_daire = (changes[0].from_daire_baskanligi or "").strip()
+    current_sube = (changes[0].from_sube_mudurlugu or "").strip()
+    for c in changes:
+        if target_date < c.transfer_date:
+            return {"daire_baskanligi": current_daire, "sube_mudurlugu": current_sube}
+        current_daire = (c.to_daire_baskanligi or "").strip()
+        current_sube = (c.to_sube_mudurlugu or "").strip()
+    return {"daire_baskanligi": current_daire, "sube_mudurlugu": current_sube}
+
+
+def unit_scope_allows_user(viewer: User, target_user_id: int, ref_date: date, profile: UserProfile = None) -> bool:
+    if not viewer:
+        return False
+    if is_founder_user(viewer):
+        return True
+    perm = get_delegate_permission(viewer.id)
+    if not perm:
+        return False
+    daire_scope = (perm.scope_daire_baskanligi or "").strip()
+    sube_scope = (perm.scope_sube_mudurlugu or "").strip()
+    if not daire_scope and not sube_scope:
+        return True
+    u = unit_at_date_for_user(target_user_id, ref_date, profile=profile)
+    u_daire = (u.get("daire_baskanligi") or "").strip()
+    u_sube = (u.get("sube_mudurlugu") or "").strip()
+    if daire_scope and u_daire != daire_scope:
+        return False
+    if sube_scope and u_sube != sube_scope:
+        return False
+    return True
+
+
+def unit_scope_allows_user_for_year(viewer: User, target_user_id: int, selected_year: int, profile: UserProfile = None) -> bool:
+    if not viewer:
+        return False
+    if is_founder_user(viewer):
+        return True
+    y = int(selected_year)
+    d1 = date(y, 1, 1)
+    d2 = date(y, 12, 31)
+    return unit_scope_allows_user(viewer, target_user_id, d1, profile=profile) or unit_scope_allows_user(
+        viewer, target_user_id, d2, profile=profile
+    )
 
 
 def period_start_key_for_date(target_date: date):
@@ -1034,6 +1110,7 @@ def admin_users():
     can_period_lock = delegate_can(effective_user, "period_lock")
     can_bulk_entry = delegate_can(effective_user, "bulk_entry")
     can_terminated_users = delegate_can(effective_user, "terminated_users")
+    can_unit_change = delegate_can(effective_user, "unit_change")
     allowed_ids = allowed_user_ids_for(effective_user)
     can_impersonate = delegate_can(effective_user, "impersonate")
     if not can_users_screen:
@@ -1071,6 +1148,8 @@ def admin_users():
     visible_users = []
     for u in users:
         p = profiles.get(u.id) or UserProfile(user_id=u.id)
+        if not unit_scope_allows_user_for_year(effective_user, u.id, selected_year, profile=p):
+            continue
         if p.employment_end_date and not include_user_for_selected_year(p, selected_year):
             continue
         visible_users.append(u)
@@ -1087,6 +1166,7 @@ def admin_users():
                 "can_open_user": bool(can_impersonate and (allowed_ids is None or u.id in allowed_ids)),
                 "can_change_email": bool(can_change_email),
                 "can_terminated_users": bool(can_terminated_users),
+                "can_unit_change": bool(can_unit_change),
             }
         )
     sig_prefix = f"bulk_excel_sign_{owner_user.id}"
@@ -1111,6 +1191,9 @@ def admin_users():
         can_period_lock=can_period_lock,
         can_bulk_entry=can_bulk_entry,
         can_terminated_users=can_terminated_users,
+        can_unit_change=can_unit_change,
+        daire_options=DAIRE_OPTIONS,
+        sube_options=SUBE_OPTIONS,
         years=years,
         selected_year=selected_year,
         period_options=period_options,
@@ -1196,6 +1279,7 @@ def admin_users_bulk_entry():
         r
         for r in rows
         if include_user_for_selected_year((r.get("profile") or UserProfile(user_id=0)), selected_year)
+        and unit_scope_allows_user_for_year(login_user, int((r.get("user") or User()).id or 0), selected_year, profile=(r.get("profile") or None))
     ]
 
     selected_user_ids = {int(v) for v in request.values.getlist("selected_user_ids") if str(v).isdigit()}
@@ -1464,10 +1548,26 @@ def admin_backup_export():
                 "can_period_lock": bool(p.can_period_lock),
                 "can_bulk_entry": bool(p.can_bulk_entry),
                 "can_view_terminated_users": bool(p.can_view_terminated_users),
+                "can_unit_change": bool(p.can_unit_change),
+                "scope_daire_baskanligi": str(p.scope_daire_baskanligi or ""),
+                "scope_sube_mudurlugu": str(p.scope_sube_mudurlugu or ""),
                 "created_at": dt(p.created_at),
                 "updated_at": dt(p.updated_at),
             }
             for p in DelegatedAdminPermission.query.order_by(DelegatedAdminPermission.id.asc()).all()
+        ],
+        "unit_changes": [
+            {
+                "id": r.id,
+                "user_id": r.user_id,
+                "transfer_date": r.transfer_date.isoformat(),
+                "from_daire_baskanligi": r.from_daire_baskanligi,
+                "from_sube_mudurlugu": r.from_sube_mudurlugu,
+                "to_daire_baskanligi": r.to_daire_baskanligi,
+                "to_sube_mudurlugu": r.to_sube_mudurlugu,
+                "created_at": dt(r.created_at),
+            }
+            for r in UnitChange.query.order_by(UnitChange.id.asc()).all()
         ],
         "period_locks": [
             {
@@ -1525,6 +1625,7 @@ def admin_backup_import():
         OvertimeEntry.query.delete(synchronize_session=False)
         UserProfile.query.delete(synchronize_session=False)
         DelegatedAdminPermission.query.delete(synchronize_session=False)
+        UnitChange.query.delete(synchronize_session=False)
         PeriodLock.query.delete(synchronize_session=False)
         AppSetting.query.delete(synchronize_session=False)
         User.query.delete(synchronize_session=False)
@@ -1590,8 +1691,25 @@ def admin_backup_import():
                     can_period_lock=bool(p.get("can_period_lock", False)),
                     can_bulk_entry=bool(p.get("can_bulk_entry", False)),
                     can_view_terminated_users=bool(p.get("can_view_terminated_users", False)),
+                    can_unit_change=bool(p.get("can_unit_change", False)),
+                    scope_daire_baskanligi=str(p.get("scope_daire_baskanligi", "")),
+                    scope_sube_mudurlugu=str(p.get("scope_sube_mudurlugu", "")),
                     created_at=parse_dt(p.get("created_at")) or datetime.utcnow(),
                     updated_at=parse_dt(p.get("updated_at")) or datetime.utcnow(),
+                )
+            )
+
+        for r in payload.get("unit_changes", []):
+            db.session.add(
+                UnitChange(
+                    id=int(r.get("id")),
+                    user_id=int(r.get("user_id")),
+                    transfer_date=parse_date(str(r.get("transfer_date", ""))),
+                    from_daire_baskanligi=str(r.get("from_daire_baskanligi", "")),
+                    from_sube_mudurlugu=str(r.get("from_sube_mudurlugu", "")),
+                    to_daire_baskanligi=str(r.get("to_daire_baskanligi", "")),
+                    to_sube_mudurlugu=str(r.get("to_sube_mudurlugu", "")),
+                    created_at=parse_dt(r.get("created_at")) or datetime.utcnow(),
                 )
             )
 
@@ -1669,21 +1787,23 @@ def admin_users_charts():
     elif selection_applied:
         users = []
     profiles = {p.user_id: p for p in UserProfile.query.all()}
-
     all_users_for_table = [
         u
         for u in all_users_for_table
         if include_user_for_selected_year((profiles.get(u.id) or UserProfile(user_id=u.id)), selected_year)
+        and unit_scope_allows_user_for_year(login_user, u.id, selected_year, profile=(profiles.get(u.id) or UserProfile(user_id=u.id)))
     ]
     users = [
         u
         for u in users
         if include_user_for_selected_year((profiles.get(u.id) or UserProfile(user_id=u.id)), selected_year)
+        and unit_scope_allows_user_for_year(login_user, u.id, selected_year, profile=(profiles.get(u.id) or UserProfile(user_id=u.id)))
     ]
     users_for_period = [
         u
         for u in users
         if include_user_for_selected_period((profiles.get(u.id) or UserProfile(user_id=u.id)), active_start[0], active_start[1])
+        and unit_scope_allows_user(login_user, u.id, p_end, profile=(profiles.get(u.id) or UserProfile(user_id=u.id)))
     ]
     users_for_period_ids = {u.id for u in users_for_period}
 
@@ -1834,11 +1954,13 @@ def admin_users_charts_export_xlsx():
         u
         for u in users
         if include_user_for_selected_year((profiles.get(u.id) or UserProfile(user_id=u.id)), selected_year)
+        and unit_scope_allows_user_for_year(login_user, u.id, selected_year, profile=(profiles.get(u.id) or UserProfile(user_id=u.id)))
     ]
     users_for_period = [
         u
         for u in users
         if include_user_for_selected_period((profiles.get(u.id) or UserProfile(user_id=u.id)), active_start[0], active_start[1])
+        and unit_scope_allows_user(login_user, u.id, p_end, profile=(profiles.get(u.id) or UserProfile(user_id=u.id)))
     ]
     users_for_period_ids = {u.id for u in users_for_period}
 
@@ -2062,6 +2184,9 @@ def admin_edit_permission(target_user_id: int):
         can_period_lock = request.form.get("can_period_lock") == "1"
         can_bulk_entry = request.form.get("can_bulk_entry") == "1"
         can_view_terminated_users = request.form.get("can_view_terminated_users") == "1"
+        can_unit_change = request.form.get("can_unit_change") == "1"
+        scope_daire_baskanligi = request.form.get("scope_daire_baskanligi", "").strip()
+        scope_sube_mudurlugu = request.form.get("scope_sube_mudurlugu", "").strip()
         if perm is None:
             perm = DelegatedAdminPermission(owner_user_id=founder.id, delegate_user_id=target.id)
             db.session.add(perm)
@@ -2076,6 +2201,9 @@ def admin_edit_permission(target_user_id: int):
         perm.can_period_lock = can_period_lock
         perm.can_bulk_entry = can_bulk_entry
         perm.can_view_terminated_users = can_view_terminated_users
+        perm.can_unit_change = can_unit_change
+        perm.scope_daire_baskanligi = scope_daire_baskanligi
+        perm.scope_sube_mudurlugu = scope_sube_mudurlugu
         db.session.commit()
         flash("Yetkiler kaydedildi.", "success")
         return redirect(url_for("admin_authorized_users"))
@@ -2102,6 +2230,11 @@ def admin_edit_permission(target_user_id: int):
         can_period_lock=bool(perm.can_period_lock) if perm else False,
         can_bulk_entry=bool(perm.can_bulk_entry) if perm else False,
         can_view_terminated_users=bool(perm.can_view_terminated_users) if perm else False,
+        can_unit_change=bool(perm.can_unit_change) if perm else False,
+        scope_daire_baskanligi=(perm.scope_daire_baskanligi if perm else ""),
+        scope_sube_mudurlugu=(perm.scope_sube_mudurlugu if perm else ""),
+        daire_options=DAIRE_OPTIONS,
+        sube_options=SUBE_OPTIONS,
     )
 
 
@@ -2236,6 +2369,92 @@ def admin_terminated_users():
     return render_template("admin_terminated_users.html", rows=rows, format_dmy=format_dmy)
 
 
+@app.post("/admin/users/<int:target_user_id>/unit-change")
+@login_required
+@admin_or_delegate_required
+def admin_add_unit_change(target_user_id: int):
+    login_user = session_login_user()
+    if not delegate_can(login_user, "unit_change"):
+        flash("Birim değişikliği işlemi yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    target = User.query.get(target_user_id)
+    if not target:
+        flash("Kullanıcı bulunamadı.", "error")
+        return redirect(url_for("admin_users"))
+    profile = get_or_create_profile(target.id)
+    from_daire = (request.form.get("from_daire_baskanligi") or "").strip()
+    from_sube = (request.form.get("from_sube_mudurlugu") or "").strip()
+    to_daire = (request.form.get("to_daire_baskanligi") or "").strip()
+    to_sube = (request.form.get("to_sube_mudurlugu") or "").strip()
+    date_raw = (request.form.get("transfer_date") or "").strip()
+    try:
+        transfer_date = datetime.strptime(date_raw, "%Y-%m-%d").date()
+    except Exception:
+        flash("Geçerli bir tarih seçin.", "error")
+        return redirect(url_for("admin_users"))
+    if not from_daire or not from_sube or not to_daire or not to_sube:
+        flash("Mevcut ve yeni birim bilgilerini eksiksiz seçin.", "error")
+        return redirect(url_for("admin_users"))
+    rec = UnitChange(
+        user_id=target.id,
+        transfer_date=transfer_date,
+        from_daire_baskanligi=from_daire,
+        from_sube_mudurlugu=from_sube,
+        to_daire_baskanligi=to_daire,
+        to_sube_mudurlugu=to_sube,
+    )
+    db.session.add(rec)
+    # Profili güncel birime çek (sonraki normal ekranlar güncel birimi görsün)
+    profile.daire_baskanligi = to_daire
+    profile.sube_mudurlugu = to_sube
+    db.session.commit()
+    flash("Birim değişikliği kaydedildi.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.get("/admin/users/unit-changes")
+@login_required
+@admin_or_delegate_required
+def admin_unit_changes():
+    login_user = session_login_user()
+    if not delegate_can(login_user, "unit_change"):
+        flash("Birim değişikliği ekranı yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    allowed_ids = allowed_user_ids_for(login_user)
+    q = UnitChange.query.order_by(UnitChange.transfer_date.desc(), UnitChange.id.desc())
+    if allowed_ids is not None:
+        q = q.filter(UnitChange.user_id.in_(list(allowed_ids) or [0]))
+    rows_raw = q.all()
+    users = {u.id: u for u in User.query.filter(User.id.in_([r.user_id for r in rows_raw] or [0])).all()}
+    profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_([r.user_id for r in rows_raw] or [0])).all()}
+    rows = []
+    for r in rows_raw:
+        u = users.get(r.user_id)
+        if not u:
+            continue
+        p = profiles.get(r.user_id) or UserProfile(user_id=r.user_id)
+        rows.append({"change": r, "user": u, "profile": p})
+    return render_template("admin_unit_changes.html", rows=rows, format_dmy=format_dmy)
+
+
+@app.post("/admin/users/unit-changes/<int:change_id>/cancel")
+@login_required
+@admin_or_delegate_required
+def admin_cancel_unit_change(change_id: int):
+    login_user = session_login_user()
+    if not delegate_can(login_user, "unit_change"):
+        flash("Birim değişikliği iptal yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    rec = UnitChange.query.get(change_id)
+    if not rec:
+        flash("Birim değişikliği kaydı bulunamadı.", "error")
+        return redirect(url_for("admin_unit_changes"))
+    db.session.delete(rec)
+    db.session.commit()
+    flash("Birim değişikliği kaydı iptal edildi.", "success")
+    return redirect(url_for("admin_unit_changes"))
+
+
 @app.route("/admin/users/new", methods=["GET", "POST"])
 @login_required
 @admin_or_delegate_required
@@ -2247,13 +2466,8 @@ def admin_add_user():
         flash("Kişi ekleme yetkiniz yok.", "error")
         return redirect(url_for("admin_users"))
 
-    daire_options = ["Abone İşleri Dairesi Başkanlığı"]
-    sube_options = [
-        "Sayaç İşleri Şube Müdürlüğü",
-        "Abone İşleri Şube Müdürlüğü",
-        "Müşteri Hizmetleri Şube Müdürlüğü",
-        "Tahakkuk İşleri Şube Müdürlüğü",
-    ]
+    daire_options = list(DAIRE_OPTIONS)
+    sube_options = list(SUBE_OPTIONS)
 
     if request.method == "POST":
         daire = request.form.get("daire_baskanligi", "").strip()
@@ -2428,6 +2642,7 @@ def admin_export_selected_users_xlsx():
         u
         for u in users
         if include_user_for_selected_year((profiles.get(u.id) or UserProfile(user_id=u.id)), year)
+        and unit_scope_allows_user_for_year(login_user, u.id, year, profile=(profiles.get(u.id) or UserProfile(user_id=u.id)))
     ]
     selected_ids = [u.id for u in users]
     if not selected_ids:
@@ -2586,7 +2801,9 @@ def admin_export_selected_users_xlsx():
         ws[cell_ref].value = value
 
     first_profile = export_rows[0]["profile"]
-    set_cell_value_safe("B2", tr_upper(first_profile.sube_mudurlugu or ""))
+    first_user = export_rows[0]["user"]
+    first_unit = unit_at_date_for_user(first_user.id, p_end, profile=first_profile)
+    set_cell_value_safe("B2", tr_upper((first_unit.get("sube_mudurlugu") or first_profile.sube_mudurlugu or "")))
     set_cell_value_safe("G5", first_month_upper)
     set_cell_value_safe("O5", second_month_upper)
 
@@ -3408,6 +3625,7 @@ def export_reports_xlsx():
         return redirect(url_for("reports"))
     sy, sm = (int(x) for x in period.split("-"))
     p_start, p_end, rows = report_period_rows_for_export(user.id, sy, sm)
+    period_unit = unit_at_date_for_user(user.id, p_end, profile=profile)
     totals = {
         "pct60": sum(r["pct60"] for r in rows),
         "pct15": sum(r["pct15"] for r in rows),
@@ -3426,8 +3644,8 @@ def export_reports_xlsx():
 
     wb = load_workbook(template_path)
     ws = wb[wb.sheetnames[0]]
-    ws["D3"] = profile.daire_baskanligi
-    ws["D4"] = profile.sube_mudurlugu
+    ws["D3"] = period_unit.get("daire_baskanligi") or profile.daire_baskanligi
+    ws["D4"] = period_unit.get("sube_mudurlugu") or profile.sube_mudurlugu
     ws["D5"] = profile.ad_soyad
     ws["D6"] = profile.sicil_no
     end_month_name = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"][p_end.month - 1]
@@ -3794,6 +4012,12 @@ def ensure_delegated_permission_columns():
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_bulk_entry BOOLEAN NOT NULL DEFAULT FALSE"))
     if "can_view_terminated_users" not in cols:
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_terminated_users BOOLEAN NOT NULL DEFAULT FALSE"))
+    if "can_unit_change" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_unit_change BOOLEAN NOT NULL DEFAULT FALSE"))
+    if "scope_daire_baskanligi" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN scope_daire_baskanligi VARCHAR(255) NOT NULL DEFAULT ''"))
+    if "scope_sube_mudurlugu" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN scope_sube_mudurlugu VARCHAR(255) NOT NULL DEFAULT ''"))
     # eski kolon varsa yeni yapıya taşımak için bir kez eşitle
     if "can_view_passwords" in cols:
         db.session.execute(

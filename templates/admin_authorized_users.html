@@ -39,6 +39,8 @@
                     <th>Dönem Kilidi</th>
                     <th>Toplu Mesai Girişi</th>
                     <th>İşten Ayrılanlar</th>
+                    <th>Birim Değişikliği</th>
+                    <th>Birim Kapsamı</th>
                     <th>İşlem</th>
                 </tr>
             </thead>
@@ -56,6 +58,8 @@
                     <td>{{ "Evet" if d.perm.can_period_lock else "Hayır" }}</td>
                     <td>{{ "Evet" if d.perm.can_bulk_entry else "Hayır" }}</td>
                     <td>{{ "Evet" if d.perm.can_view_terminated_users else "Hayır" }}</td>
+                    <td>{{ "Evet" if d.perm.can_unit_change else "Hayır" }}</td>
+                    <td>{{ (d.perm.scope_daire_baskanligi or "Tümü") ~ " / " ~ (d.perm.scope_sube_mudurlugu or "Tümü") }}</td>
                     <td>
                         <a class="button-link mini" href="{{ url_for('admin_edit_permission', target_user_id=d.user.id) }}">Düzenle</a>
                         <form method="post" action="{{ url_for('admin_remove_authorized_user', delegate_user_id=d.user.id) }}" style="display:inline;" onsubmit="return confirm('Bu kullanıcının yetkileri kaldırılsın mı?');">
@@ -64,7 +68,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="12">Henüz yetki verilen kullanıcı yok.</td></tr>
+                <tr><td colspan="14">Henüz yetki verilen kullanıcı yok.</td></tr>
                 {% endfor %}
             </tbody>
             </table>

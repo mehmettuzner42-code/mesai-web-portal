@@ -23,6 +23,9 @@
         {% if is_founder or can_terminated_users %}
         <a class="button-link" href="{{ url_for('admin_terminated_users') }}">İşten Ayrılanlar</a>
         {% endif %}
+        {% if is_founder or can_unit_change %}
+        <a class="button-link" href="{{ url_for('admin_unit_changes') }}">Birim Değişikliği</a>
+        {% endif %}
         {% if is_founder %}
         <a class="button-link" href="{{ url_for('admin_backup_export') }}">Yedek Al</a>
         <form id="backupImportForm" method="post" action="{{ url_for('admin_backup_import') }}" enctype="multipart/form-data" style="display:inline;">
@@ -93,6 +96,10 @@
                                 data-can-terminated-users="{{ '1' if row.can_terminated_users else '0' }}"
                                 data-terminated-url="{{ url_for('admin_set_terminated', target_user_id=row.user.id) }}"
                                 data-terminated-date="{{ row.profile.employment_end_date.isoformat() if row.profile.employment_end_date else '' }}"
+                                data-can-unit-change="{{ '1' if row.can_unit_change else '0' }}"
+                                data-unit-change-url="{{ url_for('admin_add_unit_change', target_user_id=row.user.id) }}"
+                                data-current-daire="{{ row.profile.daire_baskanligi or '' }}"
+                                data-current-sube="{{ row.profile.sube_mudurlugu or '' }}"
                                 {% if is_founder %}
                                 data-can-delete="1"
                                 data-delete-url="{{ url_for('admin_delete_user', target_user_id=row.user.id) }}"
@@ -190,6 +197,11 @@
             <button type="submit" class="danger-link">İşten Ayrıldı</button>
         </form>
         {% endif %}
+        {% if is_founder or can_unit_change %}
+        <form id="dlgUnitChangeForm" method="post" action="#">
+            <button type="submit">Birim Değişikliği</button>
+        </form>
+        {% endif %}
     </div>
     <div class="row-options-footer">
         <button type="button" id="dlgCloseBtn">Kapat</button>
@@ -203,6 +215,46 @@
         <input id="terminatedDateInput" name="employment_end_date" type="date" required style="width:100%; box-sizing:border-box; margin-top:6px; margin-bottom:12px;">
         <div class="edit-actions">
             <button type="button" id="terminatedCancelBtn" class="danger-link">İptal</button>
+            <button type="submit" class="success-btn">Kaydet</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="unitChangeDialog" class="row-options-dialog">
+    <h3>Birim Değişikliği</h3>
+    <form id="unitChangeDialogForm" method="post" action="#">
+        <label>Mevcut Birim Adı - Daire Başkanlığı</label>
+        <select id="unitFromDaire" name="from_daire_baskanligi" required>
+            <option value="">Seçiniz</option>
+            {% for d in daire_options %}
+            <option value="{{ d }}">{{ d }}</option>
+            {% endfor %}
+        </select>
+        <label style="margin-top:8px;">Mevcut Birim Adı - Şube Müdürlüğü</label>
+        <select id="unitFromSube" name="from_sube_mudurlugu" required>
+            <option value="">Seçiniz</option>
+            {% for s in sube_options %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+        </select>
+        <label style="margin-top:8px;">Yeni Birim Adı - Daire Başkanlığı</label>
+        <select id="unitToDaire" name="to_daire_baskanligi" required>
+            <option value="">Seçiniz</option>
+            {% for d in daire_options %}
+            <option value="{{ d }}">{{ d }}</option>
+            {% endfor %}
+        </select>
+        <label style="margin-top:8px;">Yeni Birim Adı - Şube Müdürlüğü</label>
+        <select id="unitToSube" name="to_sube_mudurlugu" required>
+            <option value="">Seçiniz</option>
+            {% for s in sube_options %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+        </select>
+        <label for="unitTransferDate" style="margin-top:8px;">Tarih</label>
+        <input id="unitTransferDate" name="transfer_date" type="date" required style="width:100%; box-sizing:border-box; margin-top:6px; margin-bottom:12px;">
+        <div class="edit-actions">
+            <button type="button" id="unitChangeCancelBtn" class="danger-link">İptal</button>
             <button type="submit" class="success-btn">Kaydet</button>
         </div>
     </form>
@@ -235,10 +287,19 @@
     const dlgSetTerminatedForm = document.getElementById("dlgSetTerminatedForm");
     const dlgPermission = document.getElementById("dlgPermission");
     const dlgCloseBtn = document.getElementById("dlgCloseBtn");
+    const dlgUnitChangeForm = document.getElementById("dlgUnitChangeForm");
     const terminatedDialog = document.getElementById("terminatedDialog");
     const terminatedDialogForm = document.getElementById("terminatedDialogForm");
     const terminatedDateInput = document.getElementById("terminatedDateInput");
     const terminatedCancelBtn = document.getElementById("terminatedCancelBtn");
+    const unitChangeDialog = document.getElementById("unitChangeDialog");
+    const unitChangeDialogForm = document.getElementById("unitChangeDialogForm");
+    const unitFromDaire = document.getElementById("unitFromDaire");
+    const unitFromSube = document.getElementById("unitFromSube");
+    const unitToDaire = document.getElementById("unitToDaire");
+    const unitToSube = document.getElementById("unitToSube");
+    const unitTransferDate = document.getElementById("unitTransferDate");
+    const unitChangeCancelBtn = document.getElementById("unitChangeCancelBtn");
     const usersTable = document.getElementById("usersTable");
     const usersSelectAll = document.getElementById("usersSelectAll");
     const usersFilterDaire = document.getElementById("usersFilterDaire");
@@ -268,6 +329,11 @@
                 dlgSetTerminatedForm.action = btn.dataset.terminatedUrl || "#";
                 dlgSetTerminatedForm.dataset.currentDate = btn.dataset.terminatedDate || "";
             }
+            if (dlgUnitChangeForm) {
+                dlgUnitChangeForm.action = btn.dataset.unitChangeUrl || "#";
+                dlgUnitChangeForm.dataset.currentDaire = btn.dataset.currentDaire || "";
+                dlgUnitChangeForm.dataset.currentSube = btn.dataset.currentSube || "";
+            }
             dlgOpenAs.hidden = !(btn.dataset.canOpen === "1");
 
             if (dlgResetForm) {
@@ -287,6 +353,10 @@
             if (dlgSetTerminatedForm) {
                 const canTerminated = btn.dataset.canTerminatedUsers === "1";
                 dlgSetTerminatedForm.hidden = !canTerminated;
+            }
+            if (dlgUnitChangeForm) {
+                const canUnit = btn.dataset.canUnitChange === "1";
+                dlgUnitChangeForm.hidden = !canUnit;
             }
 
             if (dlgPermission) {
@@ -321,6 +391,24 @@
     if (terminatedCancelBtn) {
         terminatedCancelBtn.addEventListener("click", () => {
             if (terminatedDialog) terminatedDialog.close();
+        });
+    }
+    if (dlgUnitChangeForm) {
+        dlgUnitChangeForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            if (!unitChangeDialog || !unitChangeDialogForm) return;
+            unitChangeDialogForm.action = dlgUnitChangeForm.action || "#";
+            if (unitFromDaire) unitFromDaire.value = dlgUnitChangeForm.dataset.currentDaire || "";
+            if (unitFromSube) unitFromSube.value = dlgUnitChangeForm.dataset.currentSube || "";
+            if (unitToDaire) unitToDaire.value = "";
+            if (unitToSube) unitToSube.value = "";
+            if (unitTransferDate) unitTransferDate.value = "";
+            unitChangeDialog.showModal();
+        });
+    }
+    if (unitChangeCancelBtn) {
+        unitChangeCancelBtn.addEventListener("click", () => {
+            if (unitChangeDialog) unitChangeDialog.close();
         });
     }
     if (emailChangeCancelBtn) {

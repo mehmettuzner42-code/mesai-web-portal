@@ -19,6 +19,25 @@
                 <label><input type="checkbox" name="can_period_lock" value="1" {% if can_period_lock %}checked{% endif %}> <span>Dönem Kilidi</span></label>
                 <label><input type="checkbox" name="can_bulk_entry" value="1" {% if can_bulk_entry %}checked{% endif %}> <span>Toplu Mesai Girişi</span></label>
                 <label><input type="checkbox" name="can_view_terminated_users" value="1" {% if can_view_terminated_users %}checked{% endif %}> <span>İşten Ayrılanlar</span></label>
+                <label><input type="checkbox" name="can_unit_change" value="1" {% if can_unit_change %}checked{% endif %}> <span>Birim Değişikliği</span></label>
+            </div>
+            <div class="admin-filter-bar" style="margin-top:8px;">
+                <label class="filter-col-daire">Daire Başkanlığı (Kapsam)
+                    <select name="scope_daire_baskanligi">
+                        <option value="">Tümü</option>
+                        {% for d in daire_options %}
+                        <option value="{{ d }}" {% if scope_daire_baskanligi == d %}selected{% endif %}>{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="filter-col-sube">Şube Müdürlüğü (Kapsam)
+                    <select name="scope_sube_mudurlugu">
+                        <option value="">Tümü</option>
+                        {% for s in sube_options %}
+                        <option value="{{ s }}" {% if scope_sube_mudurlugu == s %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
             </div>
         </div>
 
