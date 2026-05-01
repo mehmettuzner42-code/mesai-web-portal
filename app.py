@@ -1960,23 +1960,6 @@ def admin_users_charts():
             )
         )
     ]
-    users_for_period = [
-        u
-        for u in users
-        if include_user_for_selected_period((profiles.get(u.id) or UserProfile(user_id=u.id)), active_start[0], active_start[1])
-        and (
-            (not need_unit_scope)
-            or unit_scope_allows_user(
-                login_user,
-                u.id,
-                p_end,
-                profile=(profiles.get(u.id) or UserProfile(user_id=u.id)),
-                perm=delegate_perm,
-                changes=unit_changes_map.get(u.id),
-            )
-        )
-    ]
-    users_for_period_ids = {u.id for u in users_for_period}
     users_ids = [u.id for u in users]
 
     if need_unit_scope:
@@ -2085,7 +2068,7 @@ def admin_users_charts():
             "year_hours": ya["pct60"],
         }
         rows.append(row_data)
-        if u.id in users_for_period_ids:
+        if abs(float(pa.get("pct60", 0) or 0)) > 1e-9 or abs(float(pa.get("pct15", 0) or 0)) > 1e-9 or abs(float(pa.get("pazar", 0) or 0)) > 1e-9 or abs(float(pa.get("bayram", 0) or 0)) > 1e-9:
             rows_period_only.append(row_data)
 
     rows_period = sorted(rows_period_only, key=lambda x: x["period_hours"], reverse=True)
@@ -2193,23 +2176,6 @@ def admin_users_charts_export_xlsx():
             )
         )
     ]
-    users_for_period = [
-        u
-        for u in users
-        if include_user_for_selected_period((profiles.get(u.id) or UserProfile(user_id=u.id)), active_start[0], active_start[1])
-        and (
-            (not need_unit_scope)
-            or unit_scope_allows_user(
-                login_user,
-                u.id,
-                p_end,
-                profile=(profiles.get(u.id) or UserProfile(user_id=u.id)),
-                perm=delegate_perm,
-                changes=unit_changes_map.get(u.id),
-            )
-        )
-    ]
-    users_for_period_ids = {u.id for u in users_for_period}
     users_ids = [u.id for u in users]
 
     if need_unit_scope:
@@ -2297,7 +2263,7 @@ def admin_users_charts_export_xlsx():
         ya = year_agg.get(u.id, {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
         row_data = {"name": p.ad_soyad or "-", "period_hours": pa["pct60"], "year_hours": ya["pct60"], "year": ya}
         rows.append(row_data)
-        if u.id in users_for_period_ids:
+        if abs(float(pa.get("pct60", 0) or 0)) > 1e-9 or abs(float(pa.get("pct15", 0) or 0)) > 1e-9 or abs(float(pa.get("pazar", 0) or 0)) > 1e-9 or abs(float(pa.get("bayram", 0) or 0)) > 1e-9:
             rows_period_only.append(row_data)
     rows_period = sorted(rows_period_only, key=lambda x: x["period_hours"], reverse=True)
     rows_year = sorted(rows, key=lambda x: x["year_hours"], reverse=True)
