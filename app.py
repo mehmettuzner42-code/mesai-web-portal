@@ -322,6 +322,26 @@ def year_period_workdate_bounds(selected_year: int):
     return date(y - 1, 12, 24), date(y, 12, 23)
 
 
+def build_start_options_from_date_range(min_work_date: date, max_work_date: date):
+    if not min_work_date or not max_work_date:
+        ps = period_start_for_date(date.today())
+        return [(ps.year, ps.month)]
+    cur = period_start_for_date(max_work_date)
+    min_ps = period_start_for_date(min_work_date)
+    out = []
+    seen = set()
+    while (cur.year, cur.month) >= (min_ps.year, min_ps.month):
+        k = (cur.year, cur.month)
+        if k not in seen:
+            out.append(k)
+            seen.add(k)
+        if cur.month == 1:
+            cur = date(cur.year - 1, 12, 24)
+        else:
+            cur = date(cur.year, cur.month - 1, 24)
+    return out or [(period_start_for_date(date.today()).year, period_start_for_date(date.today()).month)]
+
+
 def resolve_period_start_year(selected_year: int, start_month: int) -> int:
     # Donem yili kurali: Aralikta baslayan donem bir sonraki yilin donemine yazilir.
     # Ornek: 24.12.2024-23.01.2025 donemi, 2025 donem yilina aittir.
@@ -1824,14 +1844,12 @@ def admin_users_charts():
         flash("Grafik ekranını görme yetkiniz yok.", "error")
         return redirect(url_for("admin_users"))
     allowed_ids = allowed_user_ids_for(login_user)
-    work_dates_query = db.session.query(OvertimeEntry.work_date).distinct()
+    date_range_query = db.session.query(db.func.min(OvertimeEntry.work_date), db.func.max(OvertimeEntry.work_date))
     if allowed_ids is not None:
-        work_dates_query = work_dates_query.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0]))
-    all_work_dates = [wd for (wd,) in work_dates_query.all() if wd is not None]
-    start_options = sorted({(period_start_for_date(wd).year, period_start_for_date(wd).month) for wd in all_work_dates}, reverse=True)
-    if not start_options:
-        ps = period_start_for_date(date.today())
-        start_options = [(ps.year, ps.month)]
+        date_range_query = date_range_query.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0]))
+    min_wd, max_wd = date_range_query.first() or (None, None)
+    start_options = build_start_options_from_date_range(min_wd, max_wd)
+    start_options = sorted(set(start_options), reverse=True)
     years = sorted({period_year(y, m) for (y, m) in start_options}, reverse=True)
     default_year = years[0]
     selected_year = request.args.get("year", type=int) or default_year
@@ -2106,14 +2124,12 @@ def admin_users_charts_export_xlsx():
     selected_user_ids = {int(v) for v in request.form.getlist("selected_user_ids") if str(v).isdigit()}
     selection_applied = request.form.get("selection_applied") == "1"
 
-    work_dates_query = db.session.query(OvertimeEntry.work_date).distinct()
+    date_range_query = db.session.query(db.func.min(OvertimeEntry.work_date), db.func.max(OvertimeEntry.work_date))
     if allowed_ids is not None:
-        work_dates_query = work_dates_query.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0]))
-    all_work_dates = [wd for (wd,) in work_dates_query.all() if wd is not None]
-    start_options = sorted({(period_start_for_date(wd).year, period_start_for_date(wd).month) for wd in all_work_dates}, reverse=True)
-    if not start_options:
-        ps = period_start_for_date(date.today())
-        start_options = [(ps.year, ps.month)]
+        date_range_query = date_range_query.filter(OvertimeEntry.user_id.in_(list(allowed_ids) or [0]))
+    min_wd, max_wd = date_range_query.first() or (None, None)
+    start_options = build_start_options_from_date_range(min_wd, max_wd)
+    start_options = sorted(set(start_options), reverse=True)
     years = sorted({period_year(y, m) for (y, m) in start_options}, reverse=True)
     default_year = years[0]
     selected_year = request.form.get("year", type=int) or default_year
@@ -4344,6 +4360,15 @@ def ensure_user_profile_columns():
     db.session.commit()
 
 
+def ensure_performance_indexes():
+    try:
+        db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_overtime_user_date ON overtime_entry (user_id, work_date)"))
+        db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_unit_change_user_date ON unit_change (user_id, transfer_date)"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
 @app.cli.command("sync-usernames")
 def sync_usernames_cmd():
     changed = sync_usernames_with_emails()
@@ -4355,6 +4380,7 @@ with app.app_context():
     try:
         ensure_user_profile_columns()
         ensure_delegated_permission_columns()
+        ensure_performance_indexes()
         sync_usernames_with_emails()
     except Exception:
         db.session.rollback()
