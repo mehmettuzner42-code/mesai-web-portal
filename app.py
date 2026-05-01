@@ -887,6 +887,47 @@ def unit_scope_allows_user_for_year(viewer: User, target_user_id: int, selected_
     )
 
 
+def aggregate_entries_with_scope(entries, profiles_map, unit_changes_map, daire_scope: str, sube_scope: str):
+    daire_scope = (daire_scope or "").strip()
+    sube_scope = (sube_scope or "").strip()
+    state = {}
+    out = {}
+    for e in entries:
+        uid = int(e.user_id)
+        st = state.get(uid)
+        if st is None:
+            changes = list(unit_changes_map.get(uid) or [])
+            p = profiles_map.get(uid) or UserProfile(user_id=uid)
+            if changes:
+                cur_d = (changes[0].from_daire_baskanligi or "").strip()
+                cur_s = (changes[0].from_sube_mudurlugu or "").strip()
+            else:
+                cur_d = (p.daire_baskanligi or "").strip()
+                cur_s = (p.sube_mudurlugu or "").strip()
+            st = {"changes": changes, "idx": 0, "cur_d": cur_d, "cur_s": cur_s}
+            state[uid] = st
+
+        changes = st["changes"]
+        idx = int(st["idx"])
+        while idx < len(changes) and e.work_date >= changes[idx].transfer_date:
+            st["cur_d"] = (changes[idx].to_daire_baskanligi or "").strip()
+            st["cur_s"] = (changes[idx].to_sube_mudurlugu or "").strip()
+            idx += 1
+        st["idx"] = idx
+
+        if daire_scope and st["cur_d"] != daire_scope:
+            continue
+        if sube_scope and st["cur_s"] != sube_scope:
+            continue
+
+        d = out.setdefault(uid, {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
+        d["pct60"] += float(e.pct60 or 0)
+        d["pct15"] += float(e.pct15 or 0)
+        d["pazar"] += float(e.pazar or 0)
+        d["bayram"] += float(e.bayram or 0)
+    return out
+
+
 def period_start_key_for_date(target_date: date):
     ps = period_start_for_date(target_date)
     return ps.year, ps.month
@@ -1945,27 +1986,16 @@ def admin_users_charts():
                 OvertimeEntry.work_date <= p_end,
                 OvertimeEntry.user_id.in_(users_ids or [0]),
             )
+            .order_by(OvertimeEntry.user_id.asc(), OvertimeEntry.work_date.asc(), OvertimeEntry.id.asc())
             .all()
         )
-        period_agg = {}
-        for e in period_entries:
-            if not unit_scope_allows_user(
-                login_user,
-                int(e.user_id),
-                e.work_date,
-                profile=(profiles.get(int(e.user_id)) or UserProfile(user_id=int(e.user_id))),
-                perm=delegate_perm,
-                changes=unit_changes_map.get(int(e.user_id)),
-            ):
-                continue
-            d = period_agg.setdefault(
-                int(e.user_id),
-                {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0},
-            )
-            d["pct60"] += float(e.pct60 or 0)
-            d["pct15"] += float(e.pct15 or 0)
-            d["pazar"] += float(e.pazar or 0)
-            d["bayram"] += float(e.bayram or 0)
+        period_agg = aggregate_entries_with_scope(
+            period_entries,
+            profiles,
+            unit_changes_map,
+            (delegate_perm.scope_daire_baskanligi if delegate_perm else ""),
+            (delegate_perm.scope_sube_mudurlugu if delegate_perm else ""),
+        )
     else:
         period_agg_rows = (
             db.session.query(
@@ -2002,31 +2032,16 @@ def admin_users_charts():
                 OvertimeEntry.work_date >= y_from,
                 OvertimeEntry.work_date <= y_to,
             )
+            .order_by(OvertimeEntry.user_id.asc(), OvertimeEntry.work_date.asc(), OvertimeEntry.id.asc())
             .all()
         )
-        year_agg = {}
-        for e in all_year_entries:
-            if not unit_scope_allows_user(
-                login_user,
-                int(e.user_id),
-                e.work_date,
-                profile=(profiles.get(int(e.user_id)) or UserProfile(user_id=int(e.user_id))),
-                perm=delegate_perm,
-                changes=unit_changes_map.get(int(e.user_id)),
-            ):
-                continue
-            ps = period_start_for_date(e.work_date)
-            py = period_year(ps.year, ps.month)
-            if py != selected_year:
-                continue
-            d = year_agg.setdefault(
-                int(e.user_id),
-                {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0},
-            )
-            d["pct60"] += float(e.pct60 or 0)
-            d["pct15"] += float(e.pct15 or 0)
-            d["pazar"] += float(e.pazar or 0)
-            d["bayram"] += float(e.bayram or 0)
+        year_agg = aggregate_entries_with_scope(
+            all_year_entries,
+            profiles,
+            unit_changes_map,
+            (delegate_perm.scope_daire_baskanligi if delegate_perm else ""),
+            (delegate_perm.scope_sube_mudurlugu if delegate_perm else ""),
+        )
     else:
         year_agg_rows = (
             db.session.query(
@@ -2204,27 +2219,16 @@ def admin_users_charts_export_xlsx():
                 OvertimeEntry.work_date <= p_end,
                 OvertimeEntry.user_id.in_(users_ids or [0]),
             )
+            .order_by(OvertimeEntry.user_id.asc(), OvertimeEntry.work_date.asc(), OvertimeEntry.id.asc())
             .all()
         )
-        period_agg = {}
-        for e in period_entries:
-            if not unit_scope_allows_user(
-                login_user,
-                int(e.user_id),
-                e.work_date,
-                profile=(profiles.get(int(e.user_id)) or UserProfile(user_id=int(e.user_id))),
-                perm=delegate_perm,
-                changes=unit_changes_map.get(int(e.user_id)),
-            ):
-                continue
-            d = period_agg.setdefault(
-                int(e.user_id),
-                {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0},
-            )
-            d["pct60"] += float(e.pct60 or 0)
-            d["pct15"] += float(e.pct15 or 0)
-            d["pazar"] += float(e.pazar or 0)
-            d["bayram"] += float(e.bayram or 0)
+        period_agg = aggregate_entries_with_scope(
+            period_entries,
+            profiles,
+            unit_changes_map,
+            (delegate_perm.scope_daire_baskanligi if delegate_perm else ""),
+            (delegate_perm.scope_sube_mudurlugu if delegate_perm else ""),
+        )
     else:
         period_agg_rows = (
             db.session.query(
@@ -2254,28 +2258,16 @@ def admin_users_charts_export_xlsx():
                 OvertimeEntry.work_date >= y_from,
                 OvertimeEntry.work_date <= y_to,
             )
+            .order_by(OvertimeEntry.user_id.asc(), OvertimeEntry.work_date.asc(), OvertimeEntry.id.asc())
             .all()
         )
-        year_agg = {}
-        for e in all_year_entries:
-            if not unit_scope_allows_user(
-                login_user,
-                int(e.user_id),
-                e.work_date,
-                profile=(profiles.get(int(e.user_id)) or UserProfile(user_id=int(e.user_id))),
-                perm=delegate_perm,
-                changes=unit_changes_map.get(int(e.user_id)),
-            ):
-                continue
-            ps = period_start_for_date(e.work_date)
-            py = period_year(ps.year, ps.month)
-            if py != selected_year:
-                continue
-            d = year_agg.setdefault(int(e.user_id), {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
-            d["pct60"] += float(e.pct60 or 0)
-            d["pct15"] += float(e.pct15 or 0)
-            d["pazar"] += float(e.pazar or 0)
-            d["bayram"] += float(e.bayram or 0)
+        year_agg = aggregate_entries_with_scope(
+            all_year_entries,
+            profiles,
+            unit_changes_map,
+            (delegate_perm.scope_daire_baskanligi if delegate_perm else ""),
+            (delegate_perm.scope_sube_mudurlugu if delegate_perm else ""),
+        )
     else:
         year_agg_rows = (
             db.session.query(
