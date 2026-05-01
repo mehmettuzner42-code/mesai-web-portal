@@ -6,11 +6,13 @@ import os
 import secrets
 import smtplib
 import threading
+import time
 import urllib.error
 import urllib.request
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
+from types import SimpleNamespace
 
 from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
@@ -71,6 +73,9 @@ token_serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
 _RATE_LIMIT_STATE = {}
 FOUNDER_EMAIL = "mehmettuzner42@gmail.com"
 _HOLIDAY_BG_REFRESH_RUNNING = set()
+_DELEGATE_PERM_CACHE = {}
+_DELEGATE_PERM_CACHE_TTL_SEC = 3600
+_FOUNDER_ID_CACHE = {"value": None, "expires_at": 0.0}
 DAIRE_OPTIONS = ["Abone İşleri Dairesi Başkanlığı"]
 SUBE_OPTIONS = [
     "Sayaç İşleri Şube Müdürlüğü",
@@ -722,21 +727,71 @@ def is_founder_user(user: User) -> bool:
 
 
 def founder_user_id() -> int:
+    now = time.monotonic()
+    if _FOUNDER_ID_CACHE["value"] is not None and now < float(_FOUNDER_ID_CACHE["expires_at"]):
+        return int(_FOUNDER_ID_CACHE["value"] or 0)
     u = User.query.filter(db.func.lower(db.func.trim(User.email)) == FOUNDER_EMAIL.lower()).first()
-    return int(u.id) if u else 0
+    val = int(u.id) if u else 0
+    _FOUNDER_ID_CACHE["value"] = val
+    _FOUNDER_ID_CACHE["expires_at"] = now + 300.0
+    return val
+
+
+def invalidate_delegate_permission_cache(delegate_user_id: int = None):
+    if delegate_user_id is None:
+        _DELEGATE_PERM_CACHE.clear()
+        _FOUNDER_ID_CACHE["value"] = None
+        _FOUNDER_ID_CACHE["expires_at"] = 0.0
+        return
+    _DELEGATE_PERM_CACHE.pop(int(delegate_user_id), None)
+
+
+def _perm_to_cache_dict(perm: DelegatedAdminPermission):
+    return {
+        "owner_user_id": int(perm.owner_user_id),
+        "delegate_user_id": int(perm.delegate_user_id),
+        "allowed_user_ids_json": str(perm.allowed_user_ids_json or "[]"),
+        "can_view_passwords": bool(perm.can_view_passwords),
+        "can_reset_password": bool(perm.can_reset_password),
+        "can_view_users_screen": bool(perm.can_view_users_screen),
+        "can_view_charts": bool(perm.can_view_charts),
+        "can_view_filters": bool(perm.can_view_filters),
+        "can_add_user": bool(perm.can_add_user),
+        "can_change_email": bool(perm.can_change_email),
+        "can_period_lock": bool(perm.can_period_lock),
+        "can_bulk_entry": bool(perm.can_bulk_entry),
+        "can_view_terminated_users": bool(perm.can_view_terminated_users),
+        "can_unit_change": bool(perm.can_unit_change),
+        "scope_daire_baskanligi": str(perm.scope_daire_baskanligi or ""),
+        "scope_sube_mudurlugu": str(perm.scope_sube_mudurlugu or ""),
+    }
 
 
 def get_delegate_permission(user_id: int):
     fid = founder_user_id()
     if not fid:
         return None
+    now = time.monotonic()
+    cached = _DELEGATE_PERM_CACHE.get(int(user_id))
+    if cached and now < float(cached.get("expires_at", 0)):
+        data = cached.get("data")
+        if data is None:
+            return None
+        if int(data.get("owner_user_id", 0)) == int(fid):
+            return SimpleNamespace(**data)
     try:
-        return DelegatedAdminPermission.query.filter_by(owner_user_id=fid, delegate_user_id=user_id).first()
+        perm = DelegatedAdminPermission.query.filter_by(owner_user_id=fid, delegate_user_id=user_id).first()
     except (OperationalError, ProgrammingError):
         db.session.rollback()
         # Canlıda kolonlar henüz oluşmadıysa otomatik tamamla ve tekrar dene.
         ensure_delegated_permission_columns()
-        return DelegatedAdminPermission.query.filter_by(owner_user_id=fid, delegate_user_id=user_id).first()
+        perm = DelegatedAdminPermission.query.filter_by(owner_user_id=fid, delegate_user_id=user_id).first()
+    if not perm:
+        _DELEGATE_PERM_CACHE[int(user_id)] = {"expires_at": now + _DELEGATE_PERM_CACHE_TTL_SEC, "data": None}
+        return None
+    data = _perm_to_cache_dict(perm)
+    _DELEGATE_PERM_CACHE[int(user_id)] = {"expires_at": now + _DELEGATE_PERM_CACHE_TTL_SEC, "data": data}
+    return SimpleNamespace(**data)
 
 
 def allowed_user_ids_for(user: User):
@@ -1869,6 +1924,7 @@ def admin_backup_import():
             )
 
         db.session.commit()
+        invalidate_delegate_permission_cache()
         flash("Tam yedek içe aktarıldı. Tüm veriler geri yüklendi.", "success")
     except Exception as exc:
         db.session.rollback()
@@ -2465,6 +2521,7 @@ def admin_edit_permission(target_user_id: int):
         perm.scope_daire_baskanligi = scope_daire_baskanligi
         perm.scope_sube_mudurlugu = scope_sube_mudurlugu
         db.session.commit()
+        invalidate_delegate_permission_cache(target.id)
         flash("Yetkiler kaydedildi.", "success")
         return redirect(url_for("admin_authorized_users"))
 
@@ -2797,6 +2854,7 @@ def admin_remove_authorized_user(delegate_user_id: int):
     if perm:
         db.session.delete(perm)
         db.session.commit()
+        invalidate_delegate_permission_cache(delegate_user_id)
         flash("Yetki kaldırıldı.", "success")
     else:
         flash("Yetki kaydı bulunamadı.", "error")
@@ -2826,6 +2884,7 @@ def admin_delete_user(target_user_id: int):
         ).delete(synchronize_session=False)
         db.session.delete(target)
         db.session.commit()
+        invalidate_delegate_permission_cache(target.id)
         flash("Kullanıcı ve tüm verileri silindi.", "success")
     except Exception as exc:
         db.session.rollback()
