@@ -20,6 +20,9 @@
         {% if is_founder or can_bulk_entry %}
         <a class="button-link" href="{{ url_for('admin_users_bulk_entry') }}">Toplu Mesai Girişi</a>
         {% endif %}
+        {% if is_founder or can_terminated_users %}
+        <a class="button-link" href="{{ url_for('admin_terminated_users') }}">İşten Ayrılanlar</a>
+        {% endif %}
         {% if is_founder %}
         <a class="button-link" href="{{ url_for('admin_backup_export') }}">Yedek Al</a>
         <form id="backupImportForm" method="post" action="{{ url_for('admin_backup_import') }}" enctype="multipart/form-data" style="display:inline;">
@@ -87,6 +90,9 @@
                                 data-user-email="{{ row.user.email }}"
                                 data-can-permission="{{ '1' if is_founder else '0' }}"
                                 data-permission-url="{{ url_for('admin_edit_permission', target_user_id=row.user.id) }}"
+                                data-can-terminated-users="{{ '1' if row.can_terminated_users else '0' }}"
+                                data-terminated-url="{{ url_for('admin_set_terminated', target_user_id=row.user.id) }}"
+                                data-terminated-date="{{ row.profile.employment_end_date.isoformat() if row.profile.employment_end_date else '' }}"
                                 {% if is_founder %}
                                 data-can-delete="1"
                                 data-delete-url="{{ url_for('admin_delete_user', target_user_id=row.user.id) }}"
@@ -179,10 +185,27 @@
             <button type="submit" class="danger">Kullanıcı Sil</button>
         </form>
         {% endif %}
+        {% if is_founder or can_terminated_users %}
+        <form id="dlgSetTerminatedForm" method="post" action="#">
+            <button type="submit" class="danger-link">İşten Ayrıldı</button>
+        </form>
+        {% endif %}
     </div>
     <div class="row-options-footer">
         <button type="button" id="dlgCloseBtn">Kapat</button>
     </div>
+</dialog>
+
+<dialog id="terminatedDialog" class="row-options-dialog">
+    <h3>İşten Ayrılma</h3>
+    <form id="terminatedDialogForm" method="post" action="#">
+        <label for="terminatedDateInput">İşten ayrılma tarihi girin</label>
+        <input id="terminatedDateInput" name="employment_end_date" type="date" required style="width:100%; box-sizing:border-box; margin-top:6px; margin-bottom:12px;">
+        <div class="edit-actions">
+            <button type="button" id="terminatedCancelBtn" class="danger-link">İptal</button>
+            <button type="submit" class="success-btn">Kaydet</button>
+        </div>
+    </form>
 </dialog>
 
 <dialog id="emailChangeDialog" class="row-options-dialog">
@@ -209,8 +232,13 @@
     const dlgResetForm = document.getElementById("dlgResetForm");
     const dlgEmailForm = document.getElementById("dlgEmailForm");
     const dlgDeleteForm = document.getElementById("dlgDeleteForm");
+    const dlgSetTerminatedForm = document.getElementById("dlgSetTerminatedForm");
     const dlgPermission = document.getElementById("dlgPermission");
     const dlgCloseBtn = document.getElementById("dlgCloseBtn");
+    const terminatedDialog = document.getElementById("terminatedDialog");
+    const terminatedDialogForm = document.getElementById("terminatedDialogForm");
+    const terminatedDateInput = document.getElementById("terminatedDateInput");
+    const terminatedCancelBtn = document.getElementById("terminatedCancelBtn");
     const usersTable = document.getElementById("usersTable");
     const usersSelectAll = document.getElementById("usersSelectAll");
     const usersFilterDaire = document.getElementById("usersFilterDaire");
@@ -236,6 +264,10 @@
             if (dlgDeleteForm) {
                 dlgDeleteForm.action = btn.dataset.deleteUrl || "#";
             }
+            if (dlgSetTerminatedForm) {
+                dlgSetTerminatedForm.action = btn.dataset.terminatedUrl || "#";
+                dlgSetTerminatedForm.dataset.currentDate = btn.dataset.terminatedDate || "";
+            }
             dlgOpenAs.hidden = !(btn.dataset.canOpen === "1");
 
             if (dlgResetForm) {
@@ -251,6 +283,10 @@
             if (dlgDeleteForm) {
                 const canDelete = btn.dataset.canDelete === "1";
                 dlgDeleteForm.hidden = !canDelete;
+            }
+            if (dlgSetTerminatedForm) {
+                const canTerminated = btn.dataset.canTerminatedUsers === "1";
+                dlgSetTerminatedForm.hidden = !canTerminated;
             }
 
             if (dlgPermission) {
@@ -271,6 +307,20 @@
             emailChangeDialogForm.action = dlgEmailForm.action || "#";
             emailChangeInput.value = (dlgEmailForm.dataset.currentEmail || "").trim();
             emailChangeDialog.showModal();
+        });
+    }
+    if (dlgSetTerminatedForm) {
+        dlgSetTerminatedForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            if (!terminatedDialog || !terminatedDialogForm || !terminatedDateInput) return;
+            terminatedDialogForm.action = dlgSetTerminatedForm.action || "#";
+            terminatedDateInput.value = (dlgSetTerminatedForm.dataset.currentDate || "").trim();
+            terminatedDialog.showModal();
+        });
+    }
+    if (terminatedCancelBtn) {
+        terminatedCancelBtn.addEventListener("click", () => {
+            if (terminatedDialog) terminatedDialog.close();
         });
     }
     if (emailChangeCancelBtn) {

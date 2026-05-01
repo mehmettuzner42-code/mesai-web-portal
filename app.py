@@ -95,6 +95,7 @@ class UserProfile(db.Model):
     ad_soyad = db.Column(db.String(255), default="", nullable=False)
     sicil_no = db.Column(db.String(100), default="", nullable=False)
     ekip_kodu = db.Column(db.String(100), default="", nullable=False)
+    employment_end_date = db.Column(db.Date, nullable=True, index=True)
 
 
 class OvertimeEntry(db.Model):
@@ -142,6 +143,7 @@ class DelegatedAdminPermission(db.Model):
     can_change_email = db.Column(db.Boolean, default=False, nullable=False)
     can_period_lock = db.Column(db.Boolean, default=False, nullable=False)
     can_bulk_entry = db.Column(db.Boolean, default=False, nullable=False)
+    can_view_terminated_users = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -654,6 +656,14 @@ def login_required(view_func):
     def wrapped(*args, **kwargs):
         if "user_id" not in session:
             return redirect(url_for("login"))
+        try:
+            uid = int(session.get("user_id") or 0)
+        except Exception:
+            uid = 0
+        if uid and is_user_terminated(uid):
+            session.clear()
+            flash("İşten ayrılış kaydınız bulunduğu için sisteme erişiminiz kapatılmıştır.", "error")
+            return redirect(url_for("login"))
         return view_func(*args, **kwargs)
 
     return wrapped
@@ -722,6 +732,8 @@ def delegate_can(user: User, capability: str) -> bool:
         return bool(perm.can_period_lock)
     if capability == "bulk_entry":
         return bool(perm.can_bulk_entry)
+    if capability == "terminated_users":
+        return bool(perm.can_view_terminated_users)
     if capability == "reset_password":
         return bool(perm.can_reset_password)
     if capability == "impersonate":
@@ -734,6 +746,26 @@ def session_login_user():
     if not uid:
         return None
     return User.query.get(uid)
+
+
+def is_user_terminated(user_id: int) -> bool:
+    p = UserProfile.query.filter_by(user_id=user_id).first()
+    if not p or not p.employment_end_date:
+        return False
+    return date.today() >= p.employment_end_date
+
+
+def include_user_for_selected_year(profile: UserProfile, selected_year: int) -> bool:
+    if not profile or not profile.employment_end_date:
+        return True
+    return int(selected_year) <= int(profile.employment_end_date.year)
+
+
+def include_user_for_selected_period(profile: UserProfile, period_start_year: int, period_start_month: int) -> bool:
+    if not profile or not profile.employment_end_date:
+        return True
+    end_ps = period_start_for_date(profile.employment_end_date)
+    return (int(period_start_year), int(period_start_month)) <= (int(end_ps.year), int(end_ps.month))
 
 
 def period_start_key_for_date(target_date: date):
@@ -960,6 +992,9 @@ def login():
         if not user or not check_password_hash(user.password_hash, password):
             flash("E-posta veya şifre hatalı.", "error")
             return render_template("login.html")
+        if is_user_terminated(int(user.id)):
+            flash("İşten ayrılış kaydınız bulunduğu için sisteme giriş yapamazsınız.", "error")
+            return render_template("login.html")
         session.clear()
         session["user_id"] = user.id
         session["api_token"] = token_serializer.dumps({"uid": user.id, "nonce": secrets.token_hex(8)})
@@ -998,6 +1033,7 @@ def admin_users():
     can_reset_password = delegate_can(effective_user, "reset_password")
     can_period_lock = delegate_can(effective_user, "period_lock")
     can_bulk_entry = delegate_can(effective_user, "bulk_entry")
+    can_terminated_users = delegate_can(effective_user, "terminated_users")
     allowed_ids = allowed_user_ids_for(effective_user)
     can_impersonate = delegate_can(effective_user, "impersonate")
     if not can_users_screen:
@@ -1011,21 +1047,6 @@ def admin_users():
         uid: cnt
         for uid, cnt in db.session.query(OvertimeEntry.user_id, db.func.count(OvertimeEntry.id)).group_by(OvertimeEntry.user_id).all()
     }
-    rows = []
-    for u in users:
-        p = profiles.get(u.id) or UserProfile(user_id=u.id)
-        rows.append(
-            {
-                "user": u,
-                "profile": p,
-                "entry_count": int(entry_counts.get(u.id, 0)),
-                "can_manage_permissions": bool(is_founder_user(effective_user)),
-                "can_reset_password": bool(can_reset_password),
-                "can_open_user": bool(can_impersonate and (allowed_ids is None or u.id in allowed_ids)),
-                "can_change_email": bool(can_change_email),
-            }
-        )
-
     owner_user = effective_user or login_user
     founder_entries = OvertimeEntry.query.filter_by(user_id=owner_user.id).order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.id.desc()).all()
     start_options = sorted({(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) for e in founder_entries}, reverse=True)
@@ -1047,6 +1068,27 @@ def admin_users():
                 active_start = (sy, sm)
         except Exception:
             pass
+    visible_users = []
+    for u in users:
+        p = profiles.get(u.id) or UserProfile(user_id=u.id)
+        if p.employment_end_date and not include_user_for_selected_year(p, selected_year):
+            continue
+        visible_users.append(u)
+    rows = []
+    for u in visible_users:
+        p = profiles.get(u.id) or UserProfile(user_id=u.id)
+        rows.append(
+            {
+                "user": u,
+                "profile": p,
+                "entry_count": int(entry_counts.get(u.id, 0)),
+                "can_manage_permissions": bool(is_founder_user(effective_user)),
+                "can_reset_password": bool(can_reset_password),
+                "can_open_user": bool(can_impersonate and (allowed_ids is None or u.id in allowed_ids)),
+                "can_change_email": bool(can_change_email),
+                "can_terminated_users": bool(can_terminated_users),
+            }
+        )
     sig_prefix = f"bulk_excel_sign_{owner_user.id}"
     default_title = "" if not is_founder_user(owner_user) else "Ambarlar Şefi"
     default_manager_title = "" if not is_founder_user(owner_user) else "Ambarlar Şube Müdürü"
@@ -1068,6 +1110,7 @@ def admin_users():
         can_add_user=can_add_user,
         can_period_lock=can_period_lock,
         can_bulk_entry=can_bulk_entry,
+        can_terminated_users=can_terminated_users,
         years=years,
         selected_year=selected_year,
         period_options=period_options,
@@ -1148,6 +1191,12 @@ def admin_users_bulk_entry():
         except Exception:
             pass
     period_value = f"{active_start[0]:04d}-{active_start[1]:02d}"
+
+    rows = [
+        r
+        for r in rows
+        if include_user_for_selected_year((r.get("profile") or UserProfile(user_id=0)), selected_year)
+    ]
 
     selected_user_ids = {int(v) for v in request.values.getlist("selected_user_ids") if str(v).isdigit()}
     action = (request.values.get("action") or "").strip().lower()
@@ -1378,6 +1427,7 @@ def admin_backup_export():
                 "ad_soyad": p.ad_soyad,
                 "sicil_no": p.sicil_no,
                 "ekip_kodu": p.ekip_kodu,
+                "employment_end_date": p.employment_end_date.isoformat() if p.employment_end_date else None,
             }
             for p in UserProfile.query.order_by(UserProfile.id.asc()).all()
         ],
@@ -1413,6 +1463,7 @@ def admin_backup_export():
                 "can_change_email": bool(p.can_change_email),
                 "can_period_lock": bool(p.can_period_lock),
                 "can_bulk_entry": bool(p.can_bulk_entry),
+                "can_view_terminated_users": bool(p.can_view_terminated_users),
                 "created_at": dt(p.created_at),
                 "updated_at": dt(p.updated_at),
             }
@@ -1500,6 +1551,7 @@ def admin_backup_import():
                     ad_soyad=str(p.get("ad_soyad", "")),
                     sicil_no=str(p.get("sicil_no", "")),
                     ekip_kodu=str(p.get("ekip_kodu", "")),
+                    employment_end_date=parse_date(str(p.get("employment_end_date", ""))) if str(p.get("employment_end_date", "")).strip() else None,
                 )
             )
 
@@ -1537,6 +1589,7 @@ def admin_backup_import():
                     can_change_email=bool(p.get("can_change_email", False)),
                     can_period_lock=bool(p.get("can_period_lock", False)),
                     can_bulk_entry=bool(p.get("can_bulk_entry", False)),
+                    can_view_terminated_users=bool(p.get("can_view_terminated_users", False)),
                     created_at=parse_dt(p.get("created_at")) or datetime.utcnow(),
                     updated_at=parse_dt(p.get("updated_at")) or datetime.utcnow(),
                 )
@@ -1610,11 +1663,29 @@ def admin_users_charts():
 
     users_query = User.query.order_by(User.email.asc())
     users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
+    all_users_for_table = list(users)
     if selected_user_ids:
         users = [u for u in users if u.id in selected_user_ids]
     elif selection_applied:
         users = []
     profiles = {p.user_id: p for p in UserProfile.query.all()}
+
+    all_users_for_table = [
+        u
+        for u in all_users_for_table
+        if include_user_for_selected_year((profiles.get(u.id) or UserProfile(user_id=u.id)), selected_year)
+    ]
+    users = [
+        u
+        for u in users
+        if include_user_for_selected_year((profiles.get(u.id) or UserProfile(user_id=u.id)), selected_year)
+    ]
+    users_for_period = [
+        u
+        for u in users
+        if include_user_for_selected_period((profiles.get(u.id) or UserProfile(user_id=u.id)), active_start[0], active_start[1])
+    ]
+    users_for_period_ids = {u.id for u in users_for_period}
 
     period_agg_rows = (
         db.session.query(
@@ -1659,23 +1730,25 @@ def admin_users_charts():
         for uid, s60, s15, sp, sb in period_agg_rows
     }
     rows = []
+    rows_period_only = []
     for u in users:
         p = profiles.get(u.id) or UserProfile(user_id=u.id)
         pa = period_agg.get(u.id, {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
         ya = year_agg.get(u.id, {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
-        rows.append(
-            {
-                "email": u.email,
-                "name": p.ad_soyad or "-",
-                "period": pa,
-                "year": ya,
-                # Grafik metriği: sadece %60 mesai
-                "period_hours": pa["pct60"],
-                "year_hours": ya["pct60"],
-            }
-        )
+        row_data = {
+            "email": u.email,
+            "name": p.ad_soyad or "-",
+            "period": pa,
+            "year": ya,
+            # Grafik metriği: sadece %60 mesai
+            "period_hours": pa["pct60"],
+            "year_hours": ya["pct60"],
+        }
+        rows.append(row_data)
+        if u.id in users_for_period_ids:
+            rows_period_only.append(row_data)
 
-    rows_period = sorted(rows, key=lambda x: x["period_hours"], reverse=True)
+    rows_period = sorted(rows_period_only, key=lambda x: x["period_hours"], reverse=True)
     rows_year = sorted(rows, key=lambda x: x["year_hours"], reverse=True)
     rows_year_pazar = sorted(rows, key=lambda x: float(x["year"].get("pazar", 0) or 0), reverse=True)
     rows_year_bayram = sorted(rows, key=lambda x: float(x["year"].get("bayram", 0) or 0), reverse=True)
@@ -1688,7 +1761,7 @@ def admin_users_charts():
 
     return render_template(
         "admin_users_charts.html",
-        all_users=users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all(),
+        all_users=all_users_for_table,
         profiles=profiles,
         selected_user_ids=selected_user_ids,
         selected_daire=selected_daire,
@@ -1757,6 +1830,17 @@ def admin_users_charts_export_xlsx():
     elif selection_applied:
         users = []
     profiles = {p.user_id: p for p in UserProfile.query.all()}
+    users = [
+        u
+        for u in users
+        if include_user_for_selected_year((profiles.get(u.id) or UserProfile(user_id=u.id)), selected_year)
+    ]
+    users_for_period = [
+        u
+        for u in users
+        if include_user_for_selected_period((profiles.get(u.id) or UserProfile(user_id=u.id)), active_start[0], active_start[1])
+    ]
+    users_for_period_ids = {u.id for u in users_for_period}
 
     period_agg_rows = (
         db.session.query(
@@ -1790,12 +1874,16 @@ def admin_users_charts_export_xlsx():
         for uid, s60, s15, sp, sb in period_agg_rows
     }
     rows = []
+    rows_period_only = []
     for u in users:
         p = profiles.get(u.id) or UserProfile(user_id=u.id)
         pa = period_agg.get(u.id, {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
         ya = year_agg.get(u.id, {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0})
-        rows.append({"name": p.ad_soyad or "-", "period_hours": pa["pct60"], "year_hours": ya["pct60"], "year": ya})
-    rows_period = sorted(rows, key=lambda x: x["period_hours"], reverse=True)
+        row_data = {"name": p.ad_soyad or "-", "period_hours": pa["pct60"], "year_hours": ya["pct60"], "year": ya}
+        rows.append(row_data)
+        if u.id in users_for_period_ids:
+            rows_period_only.append(row_data)
+    rows_period = sorted(rows_period_only, key=lambda x: x["period_hours"], reverse=True)
     rows_year = sorted(rows, key=lambda x: x["year_hours"], reverse=True)
     rows_year_pazar = sorted(rows, key=lambda x: float(x["year"].get("pazar", 0) or 0), reverse=True)
     rows_year_bayram = sorted(rows, key=lambda x: float(x["year"].get("bayram", 0) or 0), reverse=True)
@@ -1973,6 +2061,7 @@ def admin_edit_permission(target_user_id: int):
         can_change_email = request.form.get("can_change_email") == "1"
         can_period_lock = request.form.get("can_period_lock") == "1"
         can_bulk_entry = request.form.get("can_bulk_entry") == "1"
+        can_view_terminated_users = request.form.get("can_view_terminated_users") == "1"
         if perm is None:
             perm = DelegatedAdminPermission(owner_user_id=founder.id, delegate_user_id=target.id)
             db.session.add(perm)
@@ -1986,6 +2075,7 @@ def admin_edit_permission(target_user_id: int):
         perm.can_change_email = can_change_email
         perm.can_period_lock = can_period_lock
         perm.can_bulk_entry = can_bulk_entry
+        perm.can_view_terminated_users = can_view_terminated_users
         db.session.commit()
         flash("Yetkiler kaydedildi.", "success")
         return redirect(url_for("admin_authorized_users"))
@@ -2011,6 +2101,7 @@ def admin_edit_permission(target_user_id: int):
         can_change_email=bool(perm.can_change_email) if perm else False,
         can_period_lock=bool(perm.can_period_lock) if perm else False,
         can_bulk_entry=bool(perm.can_bulk_entry) if perm else False,
+        can_view_terminated_users=bool(perm.can_view_terminated_users) if perm else False,
     )
 
 
@@ -2076,6 +2167,73 @@ def admin_period_locks_toggle():
     db.session.commit()
     flash("Dönem kilitlendi." if lock.is_locked else "Dönem kilidi açıldı.", "success")
     return redirect(url_for("admin_period_locks"))
+
+
+@app.post("/admin/users/<int:target_user_id>/set-terminated")
+@login_required
+@admin_or_delegate_required
+def admin_set_terminated(target_user_id: int):
+    login_user = session_login_user()
+    if not delegate_can(login_user, "terminated_users"):
+        flash("İşten ayrılanlar işlemi yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    target = User.query.get(target_user_id)
+    if not target:
+        flash("Kullanıcı bulunamadı.", "error")
+        return redirect(url_for("admin_users"))
+    d_raw = (request.form.get("employment_end_date") or "").strip()
+    try:
+        end_date = datetime.strptime(d_raw, "%Y-%m-%d").date()
+    except Exception:
+        flash("Geçerli bir işten ayrılma tarihi seçin.", "error")
+        return redirect(url_for("admin_users"))
+    profile = get_or_create_profile(target.id)
+    profile.employment_end_date = end_date
+    db.session.commit()
+    flash("İşten ayrılma tarihi kaydedildi. Kullanıcı girişi kapatıldı.", "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.post("/admin/users/<int:target_user_id>/cancel-terminated")
+@login_required
+@admin_or_delegate_required
+def admin_cancel_terminated(target_user_id: int):
+    login_user = session_login_user()
+    if not delegate_can(login_user, "terminated_users"):
+        flash("İşten ayrılanlar işlemi yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    target = User.query.get(target_user_id)
+    if not target:
+        flash("Kullanıcı bulunamadı.", "error")
+        return redirect(url_for("admin_users"))
+    profile = get_or_create_profile(target.id)
+    profile.employment_end_date = None
+    db.session.commit()
+    flash("İşten ayrılma kaydı iptal edildi.", "success")
+    return redirect(url_for("admin_terminated_users"))
+
+
+@app.get("/admin/users/terminated")
+@login_required
+@admin_or_delegate_required
+def admin_terminated_users():
+    login_user = session_login_user()
+    if not delegate_can(login_user, "terminated_users"):
+        flash("İşten ayrılanlar ekranını görme yetkiniz yok.", "error")
+        return redirect(url_for("admin_users"))
+    allowed_ids = allowed_user_ids_for(login_user)
+    profiles_q = UserProfile.query.filter(UserProfile.employment_end_date.isnot(None))
+    if allowed_ids is not None:
+        profiles_q = profiles_q.filter(UserProfile.user_id.in_(list(allowed_ids) or [0]))
+    terminated_profiles = profiles_q.order_by(UserProfile.employment_end_date.desc(), UserProfile.ad_soyad.asc()).all()
+    users = {u.id: u for u in User.query.filter(User.id.in_([p.user_id for p in terminated_profiles] or [0])).all()}
+    rows = []
+    for p in terminated_profiles:
+        u = users.get(p.user_id)
+        if not u:
+            continue
+        rows.append({"user": u, "profile": p})
+    return render_template("admin_terminated_users.html", rows=rows)
 
 
 @app.route("/admin/users/new", methods=["GET", "POST"])
@@ -2266,6 +2424,16 @@ def admin_export_selected_users_xlsx():
 
     users = User.query.filter(User.id.in_(selected_ids)).all()
     profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_(selected_ids)).all()}
+    users = [
+        u
+        for u in users
+        if include_user_for_selected_year((profiles.get(u.id) or UserProfile(user_id=u.id)), year)
+    ]
+    selected_ids = [u.id for u in users]
+    if not selected_ids:
+        flash("Seçilen yıl için listelenebilir kullanıcı bulunamadı.", "error")
+        return redirect(url_for("admin_users"))
+    profiles = {uid: profiles.get(uid) or UserProfile(user_id=uid) for uid in selected_ids}
     p_start, p_end = period_for_start(sy, sm)
 
     sig_prefix = f"bulk_excel_sign_{login_user.id if login_user else 0}"
@@ -3391,6 +3559,8 @@ def api_auth_required(view_func):
         user = bearer_user()
         if not user:
             return jsonify({"error": "unauthorized"}), 401
+        if is_user_terminated(int(user.id)):
+            return jsonify({"error": "terminated_user"}), 403
         request.api_user = user
         return view_func(*args, **kwargs)
 
@@ -3408,6 +3578,8 @@ def api_login():
     user = User.query.filter((User.username == identity) | (User.email == identity)).first()
     if not user or not check_password_hash(user.password_hash, password):
         return jsonify({"error": "invalid_credentials"}), 401
+    if is_user_terminated(int(user.id)):
+        return jsonify({"error": "terminated_user"}), 403
     token = token_serializer.dumps({"uid": user.id, "nonce": secrets.token_hex(8)})
     return jsonify({"token": token, "user": {"id": user.id, "email": user.email}})
 
@@ -3620,6 +3792,8 @@ def ensure_delegated_permission_columns():
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_period_lock BOOLEAN NOT NULL DEFAULT FALSE"))
     if "can_bulk_entry" not in cols:
         db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_bulk_entry BOOLEAN NOT NULL DEFAULT FALSE"))
+    if "can_view_terminated_users" not in cols:
+        db.session.execute(db.text("ALTER TABLE delegated_admin_permission ADD COLUMN can_view_terminated_users BOOLEAN NOT NULL DEFAULT FALSE"))
     # eski kolon varsa yeni yapıya taşımak için bir kez eşitle
     if "can_view_passwords" in cols:
         db.session.execute(
@@ -3639,6 +3813,17 @@ def ensure_delegated_permission_columns():
     db.session.commit()
 
 
+def ensure_user_profile_columns():
+    inspector = db.inspect(db.engine)
+    try:
+        cols = {c["name"] for c in inspector.get_columns("user_profile")}
+    except Exception:
+        return
+    if "employment_end_date" not in cols:
+        db.session.execute(db.text("ALTER TABLE user_profile ADD COLUMN employment_end_date DATE"))
+    db.session.commit()
+
+
 @app.cli.command("sync-usernames")
 def sync_usernames_cmd():
     changed = sync_usernames_with_emails()
@@ -3648,6 +3833,7 @@ def sync_usernames_cmd():
 with app.app_context():
     db.create_all()
     try:
+        ensure_user_profile_columns()
         ensure_delegated_permission_columns()
         sync_usernames_with_emails()
     except Exception:
