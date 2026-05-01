@@ -2233,7 +2233,7 @@ def admin_terminated_users():
         if not u:
             continue
         rows.append({"user": u, "profile": p})
-    return render_template("admin_terminated_users.html", rows=rows)
+    return render_template("admin_terminated_users.html", rows=rows, format_dmy=format_dmy)
 
 
 @app.route("/admin/users/new", methods=["GET", "POST"])
