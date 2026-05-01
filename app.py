@@ -76,6 +76,8 @@ _HOLIDAY_BG_REFRESH_RUNNING = set()
 _DELEGATE_PERM_CACHE = {}
 _DELEGATE_PERM_CACHE_TTL_SEC = 3600
 _FOUNDER_ID_CACHE = {"value": None, "expires_at": 0.0}
+_DELEGATE_VIEW_CACHE = {}
+_DELEGATE_VIEW_CACHE_TTL_SEC = 30.0
 DAIRE_OPTIONS = ["Abone İşleri Dairesi Başkanlığı"]
 SUBE_OPTIONS = [
     "Sayaç İşleri Şube Müdürlüğü",
@@ -740,10 +742,40 @@ def founder_user_id() -> int:
 def invalidate_delegate_permission_cache(delegate_user_id: int = None):
     if delegate_user_id is None:
         _DELEGATE_PERM_CACHE.clear()
+        _DELEGATE_VIEW_CACHE.clear()
         _FOUNDER_ID_CACHE["value"] = None
         _FOUNDER_ID_CACHE["expires_at"] = 0.0
         return
     _DELEGATE_PERM_CACHE.pop(int(delegate_user_id), None)
+    uid = int(delegate_user_id)
+    for k in list(_DELEGATE_VIEW_CACHE.keys()):
+        if f"|u:{uid}|" in k:
+            _DELEGATE_VIEW_CACHE.pop(k, None)
+
+
+def _delegate_view_cache_key(route_name: str, login_user_id: int):
+    q = request.query_string.decode("utf-8", errors="ignore")
+    imp = str(session.get("admin_impersonate_user_id") or "")
+    return f"{route_name}|u:{int(login_user_id)}|imp:{imp}|q:{q}"
+
+
+def get_delegate_view_cache(route_name: str, login_user_id: int):
+    key = _delegate_view_cache_key(route_name, login_user_id)
+    rec = _DELEGATE_VIEW_CACHE.get(key)
+    if not rec:
+        return None
+    if time.monotonic() >= float(rec.get("expires_at", 0)):
+        _DELEGATE_VIEW_CACHE.pop(key, None)
+        return None
+    return rec.get("html")
+
+
+def set_delegate_view_cache(route_name: str, login_user_id: int, html: str):
+    key = _delegate_view_cache_key(route_name, login_user_id)
+    _DELEGATE_VIEW_CACHE[key] = {
+        "expires_at": time.monotonic() + _DELEGATE_VIEW_CACHE_TTL_SEC,
+        "html": html,
+    }
 
 
 def _perm_to_cache_dict(perm: DelegatedAdminPermission):
@@ -980,6 +1012,33 @@ def aggregate_entries_with_scope(entries, profiles_map, unit_changes_map, daire_
         d["pct15"] += float(e.pct15 or 0)
         d["pazar"] += float(e.pazar or 0)
         d["bayram"] += float(e.bayram or 0)
+    return out
+
+
+def filter_entries_with_scope(entries, user_id: int, profile: UserProfile, changes, daire_scope: str, sube_scope: str):
+    daire_scope = (daire_scope or "").strip()
+    sube_scope = (sube_scope or "").strip()
+    if not daire_scope and not sube_scope:
+        return list(entries)
+    changes = list(changes or [])
+    if changes:
+        cur_d = (changes[0].from_daire_baskanligi or "").strip()
+        cur_s = (changes[0].from_sube_mudurlugu or "").strip()
+    else:
+        cur_d = ((profile.daire_baskanligi if profile else "") or "").strip()
+        cur_s = ((profile.sube_mudurlugu if profile else "") or "").strip()
+    idx = 0
+    out = []
+    for e in entries:
+        while idx < len(changes) and e.work_date >= changes[idx].transfer_date:
+            cur_d = (changes[idx].to_daire_baskanligi or "").strip()
+            cur_s = (changes[idx].to_sube_mudurlugu or "").strip()
+            idx += 1
+        if daire_scope and cur_d != daire_scope:
+            continue
+        if sube_scope and cur_s != sube_scope:
+            continue
+        out.append(e)
     return out
 
 
@@ -1239,6 +1298,10 @@ def build_period_options_for_entries(entries):
 @admin_or_delegate_required
 def admin_users():
     login_user = session_login_user()
+    if login_user and (not is_founder_user(login_user)):
+        cached_html = get_delegate_view_cache("admin_users", int(login_user.id))
+        if cached_html:
+            return app.response_class(cached_html)
     effective_user = current_user() if login_user else None
     can_users_screen = delegate_can(effective_user, "users")
     can_charts_screen = delegate_can(effective_user, "charts")
@@ -1348,7 +1411,7 @@ def admin_users():
         "director_title": get_setting_value(f"{sig_prefix}_director_title", default_director_title),
         "director_name": get_setting_value(f"{sig_prefix}_director_name", ""),
     }
-    return render_template(
+    html = render_template(
         "admin_users.html",
         rows=rows,
         can_users_screen=can_users_screen,
@@ -1367,6 +1430,9 @@ def admin_users():
         period_value=f"{active_start[0]:04d}-{active_start[1]:02d}",
         sign_fields=sign_fields,
     )
+    if login_user and (not is_founder_user(login_user)):
+        set_delegate_view_cache("admin_users", int(login_user.id), html)
+    return html
 
 
 @app.route("/admin/users/bulk-entry", methods=["GET", "POST"])
@@ -1374,6 +1440,10 @@ def admin_users():
 @admin_or_delegate_required
 def admin_users_bulk_entry():
     login_user = session_login_user()
+    if request.method == "GET" and login_user:
+        cached_html = get_delegate_view_cache("admin_users_bulk_entry", int(login_user.id))
+        if cached_html:
+            return app.response_class(cached_html)
     if not delegate_can(login_user, "bulk_entry"):
         flash("Toplu mesai girişi yetkiniz yok.", "error")
         return redirect(url_for("admin_users"))
@@ -1502,90 +1572,107 @@ def admin_users_bulk_entry():
                 OvertimeEntry.work_date <= p_end,
             ).delete(synchronize_session=False)
             to_insert = []
-            for uid in selected_user_ids:
-                for d in day_columns:
-                    raw = (request.form.get(f"cell_{uid}_{d.isoformat()}") or "").strip().replace(",", ".")
-                    if not raw:
-                        continue
-                    defaults = day_defaults_map.get(d.isoformat()) or day_defaults(d)
-                    is_special_day = bool(defaults.get("isHoliday")) or int(defaults.get("weekday", -1)) == 6
-                    start = defaults["start"]
-                    end = start
-                    pct60 = 0.0
-                    pct15 = 0.0
-                    pazar = 0.0
-                    bayram = 0.0
+            # Tum matrisi (kullanici x gun) dolasmak yerine sadece gelen dolu hucreleri isle.
+            selected_uid_set = {int(x) for x in selected_user_ids}
+            valid_day_map = {d.isoformat(): d for d in day_columns}
+            for key, value in request.form.items():
+                if not key.startswith("cell_"):
+                    continue
+                raw_val = (value or "").strip()
+                if not raw_val:
+                    continue
+                parts = key.split("_", 2)
+                if len(parts) != 3:
+                    continue
+                try:
+                    uid = int(parts[1])
+                except Exception:
+                    continue
+                if uid not in selected_uid_set:
+                    continue
+                d = valid_day_map.get(parts[2])
+                if not d:
+                    continue
+                raw = raw_val.replace(",", ".")
+                defaults = day_defaults_map.get(d.isoformat()) or day_defaults(d)
+                is_special_day = bool(defaults.get("isHoliday")) or int(defaults.get("weekday", -1)) == 6
+                start = defaults["start"]
+                end = start
+                pct60 = 0.0
+                pct15 = 0.0
+                pazar = 0.0
+                bayram = 0.0
 
-                    if is_special_day and "+" in raw:
-                        left, right = (s.strip() for s in raw.split("+", 1))
-                        try:
-                            base_val = float(left)
-                            extra_hours = float(right)
-                        except Exception:
-                            continue
-                        if extra_hours < 0:
-                            continue
-                        if base_val in (1.0, 0.5):
-                            # Ozel gunlerde 1/0.5 + X => temel mesai 17:00'a kadar tamamlanmis,
-                            # +X kismi 17:00'dan sonra devam eder.
-                            base_end = str(defaults.get("end") or "17:00")
-                            end = add_hours_hhmm(base_end, extra_hours)
-                            pct60 = float(extra_hours)
-                            pct15 = float(calc_night_20_06(start, end) or 0.0)
-                            if bool(defaults.get("isHoliday")):
-                                bayram = float(base_val)
-                            else:
-                                pazar = float(base_val)
+                if is_special_day and "+" in raw:
+                    left, right = (s.strip() for s in raw.split("+", 1))
+                    try:
+                        base_val = float(left)
+                        extra_hours = float(right)
+                    except Exception:
+                        continue
+                    if extra_hours < 0:
+                        continue
+                    if base_val in (1.0, 0.5):
+                        # Ozel gunlerde 1/0.5 + X => temel mesai 17:00'a kadar tamamlanmis,
+                        # +X kismi 17:00'dan sonra devam eder.
+                        base_end = str(defaults.get("end") or "17:00")
+                        end = add_hours_hhmm(base_end, extra_hours)
+                        pct60 = float(extra_hours)
+                        pct15 = float(calc_night_20_06(start, end) or 0.0)
+                        if bool(defaults.get("isHoliday")):
+                            bayram = float(base_val)
                         else:
-                            continue
-                    elif is_special_day:
-                        try:
-                            val = float(raw)
-                        except Exception:
-                            continue
-                        if val <= 0:
-                            continue
-                        if val in (1.0, 0.5):
-                            if bool(defaults.get("isHoliday")):
-                                bayram = float(val)
-                            else:
-                                pazar = float(val)
-                            # Sadece 1/0.5 girildiginde temel vardiya saatlerini koru.
-                            end = str(defaults.get("end") or start)
-                            pct60 = 0.0
-                            pct15 = float(calc_night_20_06(start, end) or 0.0)
-                        else:
-                            end = add_hours_hhmm(start, val)
-                            pct60 = float(val)
-                            pct15 = float(calc_night_20_06(start, end) or 0.0)
-                            pazar = 0.0
-                            bayram = 0.0
+                            pazar = float(base_val)
                     else:
-                        try:
-                            hours = float(raw)
-                        except Exception:
-                            continue
-                        if hours <= 0:
-                            continue
-                        end = add_hours_hhmm(start, hours)
-                        calc = day_defaults(d, end)
-                        pct60 = float(calc.get("pct60", 0) or 0)
-                        pct15 = float(calc.get("pct15", 0) or 0)
-                        pazar = float(calc.get("pazar", 0) or 0)
-                        bayram = float(calc.get("bayram", 0) or 0)
-                    to_insert.append(
-                        OvertimeEntry(
-                            user_id=uid,
-                            work_date=d,
-                            start_time=start,
-                            end_time=end,
-                            pct60=pct60,
-                            pct15=pct15,
-                            pazar=pazar,
-                            bayram=bayram,
-                            description="",
-                        )
+                        continue
+                elif is_special_day:
+                    try:
+                        val = float(raw)
+                    except Exception:
+                        continue
+                    if val <= 0:
+                        continue
+                    if val in (1.0, 0.5):
+                        if bool(defaults.get("isHoliday")):
+                            bayram = float(val)
+                        else:
+                            pazar = float(val)
+                        # Sadece 1/0.5 girildiginde temel vardiya saatlerini koru.
+                        end = str(defaults.get("end") or start)
+                        pct60 = 0.0
+                        pct15 = float(calc_night_20_06(start, end) or 0.0)
+                    else:
+                        end = add_hours_hhmm(start, val)
+                        pct60 = float(val)
+                        pct15 = float(calc_night_20_06(start, end) or 0.0)
+                        pazar = 0.0
+                        bayram = 0.0
+                else:
+                    try:
+                        hours = float(raw)
+                    except Exception:
+                        continue
+                    if hours <= 0:
+                        continue
+                    end = add_hours_hhmm(start, hours)
+                    calc = day_defaults(d, end)
+                    pct60 = float(calc.get("pct60", 0) or 0)
+                    pct15 = float(calc.get("pct15", 0) or 0)
+                    pazar = float(calc.get("pazar", 0) or 0)
+                    bayram = float(calc.get("bayram", 0) or 0)
+                to_insert.append(
+                    OvertimeEntry(
+                        user_id=uid,
+                        work_date=d,
+                        start_time=start,
+                        end_time=end,
+                        pct60=pct60,
+                        pct15=pct15,
+                        pazar=pazar,
+                        bayram=bayram,
+                        description="",
                     )
+                )
             if to_insert:
                 db.session.bulk_save_objects(to_insert)
             db.session.commit()
@@ -1597,7 +1684,14 @@ def admin_users_bulk_entry():
     input_values = {}
     if show_grid:
         existing = (
-            OvertimeEntry.query.filter(
+            db.session.query(
+                OvertimeEntry.user_id,
+                OvertimeEntry.work_date,
+                OvertimeEntry.pct60,
+                OvertimeEntry.pazar,
+                OvertimeEntry.bayram,
+            )
+            .filter(
                 OvertimeEntry.user_id.in_(list(selected_user_ids)),
                 OvertimeEntry.work_date >= p_start,
                 OvertimeEntry.work_date <= p_end,
@@ -1615,14 +1709,14 @@ def admin_users_bulk_entry():
                 return str(int(n))
             return f"{n:.2f}".rstrip("0").rstrip(".").replace(".", ",")
 
-        for e in existing:
-            k = (int(e.user_id), e.work_date.isoformat())
+        for uid, work_date, pct60_val, pazar_val, bayram_val in existing:
+            k = (int(uid), work_date.isoformat())
             if k in first_by_day:
                 continue
             first_by_day[k] = {
-                "pct60": float(e.pct60 or 0),
-                "pazar": float(e.pazar or 0),
-                "bayram": float(e.bayram or 0),
+                "pct60": float(pct60_val or 0),
+                "pazar": float(pazar_val or 0),
+                "bayram": float(bayram_val or 0),
             }
         for uid in selected_user_ids:
             for d in day_columns:
@@ -1653,7 +1747,7 @@ def admin_users_bulk_entry():
                 if pct60 > 0:
                     input_values[k] = _fmt_cell_num(pct60)
 
-    return render_template(
+    html = render_template(
         "admin_bulk_entry.html",
         rows=rows,
         years=years,
@@ -1669,6 +1763,9 @@ def admin_users_bulk_entry():
         sort_key=sort_key,
         sort_dir=sort_dir,
     )
+    if request.method == "GET" and login_user:
+        set_delegate_view_cache("admin_users_bulk_entry", int(login_user.id), html)
+    return html
 
 
 @app.get("/admin/backup/export")
@@ -1937,6 +2034,10 @@ def admin_backup_import():
 @admin_or_delegate_required
 def admin_users_charts():
     login_user = session_login_user()
+    if login_user and (not is_founder_user(login_user)):
+        cached_html = get_delegate_view_cache("admin_users_charts", int(login_user.id))
+        if cached_html:
+            return app.response_class(cached_html)
     if not delegate_can(login_user, "charts"):
         flash("Grafik ekranını görme yetkiniz yok.", "error")
         return redirect(url_for("admin_users"))
@@ -2138,7 +2239,7 @@ def admin_users_charts():
     year_total_pazar = sum(float(r["year"].get("pazar", 0) or 0) for r in rows_year)
     year_total_bayram = sum(float(r["year"].get("bayram", 0) or 0) for r in rows_year)
 
-    return render_template(
+    html = render_template(
         "admin_users_charts.html",
         all_users=all_users_for_table,
         profiles=profiles,
@@ -2164,6 +2265,9 @@ def admin_users_charts():
         year_total_pazar=year_total_pazar,
         year_total_bayram=year_total_bayram,
     )
+    if login_user and (not is_founder_user(login_user)):
+        set_delegate_view_cache("admin_users_charts", int(login_user.id), html)
+    return html
 
 
 @app.post("/admin/users/charts/export.xlsx")
@@ -3031,7 +3135,27 @@ def admin_export_selected_users_xlsx():
     export_rows = []
     for u in users:
         p = profiles.get(u.id) or UserProfile(user_id=u.id)
-        _, _, rows = report_period_rows_for_export(u.id, sy, sm)
+        if not is_founder_user(login_user):
+            entries_raw = (
+                OvertimeEntry.query.filter(
+                    OvertimeEntry.user_id == u.id,
+                    OvertimeEntry.work_date >= p_start,
+                    OvertimeEntry.work_date <= p_end,
+                )
+                .order_by(OvertimeEntry.work_date.asc(), OvertimeEntry.start_time.asc(), OvertimeEntry.id.asc())
+                .all()
+            )
+            scoped_entries = filter_entries_with_scope(
+                entries_raw,
+                u.id,
+                p,
+                unit_changes_map.get(u.id),
+                (delegate_perm.scope_daire_baskanligi if delegate_perm else ""),
+                (delegate_perm.scope_sube_mudurlugu if delegate_perm else ""),
+            )
+            rows = grouped_period_rows(scoped_entries)
+        else:
+            _, _, rows = report_period_rows_for_export(u.id, sy, sm)
         total60 = sum(float(r.get("pct60", 0) or 0) for r in rows)
         total15 = sum(float(r.get("pct15", 0) or 0) for r in rows)
         total_pazar = sum(float(r.get("pazar", 0) or 0) for r in rows)
