@@ -1794,6 +1794,21 @@ def admin_users_bulk_entry():
                 if pct60 > 0:
                     input_values[k] = _fmt_cell_num(pct60)
 
+    bulk_grid_day_meta = []
+    if show_grid:
+        for d in day_columns:
+            dd = day_defaults_map.get(d.isoformat()) or day_defaults(d)
+            bulk_grid_day_meta.append(
+                {
+                    "iso": d.isoformat(),
+                    "wd": int(dd.get("weekday", 0)),
+                    "hol": bool(dd.get("isHoliday")),
+                    "halfHol": bool(dd.get("isHalfHoliday")),
+                    "start": str(dd.get("start") or "08:00"),
+                    "defEnd": str(dd.get("end") or "17:00"),
+                }
+            )
+
     html = render_template(
         "admin_bulk_entry.html",
         rows=rows,
@@ -1806,6 +1821,7 @@ def admin_users_bulk_entry():
         day_columns=day_columns,
         day_styles=day_styles,
         input_values=input_values,
+        bulk_grid_day_meta=bulk_grid_day_meta,
         format_dmy=format_dmy,
         sort_key=sort_key,
         sort_dir=sort_dir,

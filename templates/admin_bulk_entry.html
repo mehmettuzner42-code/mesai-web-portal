@@ -13,6 +13,55 @@
     .bulk-entry-fullbleed .table-wrap {
         width: 100%;
     }
+    .bulk-entry-grid-section {
+        overflow: visible;
+        max-height: none;
+        width: 100%;
+    }
+    .bulk-entry-fullbleed .bulk-entry-grid-section table.compact-table.bulk-entry-grid-table {
+        min-width: 0;
+    }
+    .bulk-entry-grid-table th.bulk-metric-col,
+    .bulk-entry-grid-table td.bulk-metric-col {
+        width: 56px;
+        min-width: 52px;
+        max-width: 72px;
+        text-align: center;
+        font-weight: 700;
+        font-size: 11px;
+        background: #f8fafc;
+    }
+    tr.bulk-grand-totals td {
+        background: #e2e8f0 !important;
+        font-weight: 800;
+        border-top: 2px solid #64748b;
+    }
+    tr.bulk-grand-totals td.bulk-grand-label {
+        text-align: left;
+        padding-left: 8px;
+        background: #cbd5e1 !important;
+    }
+    .bulk-save-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 14px;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .bulk-cancel-btn {
+        color: #b91c1c;
+        font-weight: 700;
+        text-decoration: none;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #fecaca;
+        background: #fef2f2;
+    }
+    .bulk-cancel-btn:hover {
+        background: #fee2e2;
+        text-decoration: none;
+    }
     .bulk-entry-fullbleed .compact-table {
         width: 100%;
     }
@@ -174,8 +223,8 @@
         </div>
 
         {% if show_grid %}
-        <div class="table-wrap recent-scroll" style="margin-top:12px;">
-            <table class="compact-table bulk-entry-grid-table">
+        <div class="table-wrap bulk-entry-grid-section" style="margin-top:12px;">
+            <table class="compact-table bulk-entry-grid-table" id="bulkEntryGridTable">
                 <thead>
                     <tr>
                         <th>Ad Soyad</th>
@@ -183,25 +232,38 @@
                         {% set st = day_styles.get(d.isoformat(), {}) %}
                         <th title="{{ format_dmy(d) }}" style="{% if st.is_holiday %}background:#fff3bf;{% elif st.is_weekend %}background:#c7ccd1;{% endif %}">{{ d.day }}</th>
                         {% endfor %}
+                        <th class="bulk-metric-col">%60</th>
+                        <th class="bulk-metric-col">Pazar</th>
+                        <th class="bulk-metric-col">Bayram</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in rows if row.user.id in selected_user_ids %}
-                    <tr>
+                    <tr data-bulk-user-id="{{ row.user.id }}">
                         <td>{{ row.profile.ad_soyad or row.user.email }}</td>
                         {% for d in day_columns %}
                         {% set key = 'cell_' ~ row.user.id ~ '_' ~ d.isoformat() %}
                         {% set st = day_styles.get(d.isoformat(), {}) %}
                         <td style="{% if st.is_holiday %}background:#fff3bf;{% elif st.is_weekend %}background:#c7ccd1;{% endif %}">
-                            <input type="text" name="{{ key }}" value="{{ input_values.get(key, '') }}">
+                            <input type="text" name="{{ key }}" value="{{ input_values.get(key, '') }}" autocomplete="off">
                         </td>
                         {% endfor %}
+                        <td class="bulk-metric-col bulk-total-pct60" data-total-kind="pct60">—</td>
+                        <td class="bulk-metric-col bulk-total-pazar" data-total-kind="pazar">—</td>
+                        <td class="bulk-metric-col bulk-total-bayram" data-total-kind="bayram">—</td>
                     </tr>
                     {% endfor %}
+                    <tr class="bulk-grand-totals">
+                        <td class="bulk-grand-label" colspan="{{ day_columns|length + 1 }}">Genel toplam</td>
+                        <td class="bulk-metric-col bulk-grand-pct60" id="bulkGrandPct60">—</td>
+                        <td class="bulk-metric-col bulk-grand-pazar" id="bulkGrandPazar">—</td>
+                        <td class="bulk-metric-col bulk-grand-bayram" id="bulkGrandBayram">—</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
-        <div class="admin-export-bar" style="margin-top:10px;">
+        <div class="bulk-save-footer">
+            <a class="bulk-cancel-btn" href="{{ url_for('admin_users_bulk_entry', year=selected_year, period=period_value) }}">İptal</a>
             <button type="submit" name="action" value="save" class="success-btn">Toplu Kaydet</button>
         </div>
         {% endif %}
@@ -345,12 +407,269 @@
     persistSortState();
     updateSelectAll();
 
-    const gridTable = document.querySelector(".bulk-entry-grid-table");
-    if (gridTable) {
+    const BULK_DAY_META = {{ (bulk_grid_day_meta or []) | tojson }};
+    const gridTable = document.getElementById("bulkEntryGridTable");
+    if (gridTable && Array.isArray(BULK_DAY_META) && BULK_DAY_META.length) {
+        const metaByIso = new Map(BULK_DAY_META.map((x) => [x.iso, x]));
+
+        function hhmmToMin(hhmm) {
+            const p = String(hhmm || "").split(":");
+            if (p.length !== 2) return null;
+            const h = parseInt(p[0], 10);
+            const m = parseInt(p[1], 10);
+            if (Number.isNaN(h) || Number.isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+            return h * 60 + m;
+        }
+        function overlap(a0, a1, b0, b1) {
+            return Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
+        }
+        function calcTotalHours(startH, endH) {
+            let s = hhmmToMin(startH);
+            let e = hhmmToMin(endH);
+            if (s == null || e == null) return 0;
+            if (e <= s) e += 1440;
+            return (e - s) / 60.0;
+        }
+        function calcLunch1213(startH, endH) {
+            let s = hhmmToMin(startH);
+            let e = hhmmToMin(endH);
+            if (s == null || e == null) return 0;
+            if (e <= s) e += 1440;
+            let total = 0;
+            const maxDay = Math.floor(e / 1440) + 1;
+            for (let k = 0; k < maxDay + 2; k++) {
+                const d0 = k * 1440;
+                total += overlap(s, e, d0 + 12 * 60, d0 + 13 * 60);
+            }
+            return total / 60.0;
+        }
+        function calcLunch1230(startH, endH) {
+            let s = hhmmToMin(startH);
+            let e = hhmmToMin(endH);
+            if (s == null || e == null) return 0;
+            if (e <= s) e += 1440;
+            let total = 0;
+            const maxDay = Math.floor(e / 1440) + 1;
+            for (let k = 0; k < maxDay + 2; k++) {
+                const d0 = k * 1440;
+                total += overlap(s, e, d0 + 12 * 60 + 30, d0 + 13 * 60 + 30);
+            }
+            return total / 60.0;
+        }
+        function addHoursHhmm(hhmm, hours) {
+            const base = hhmmToMin(hhmm);
+            if (base == null) return hhmm;
+            const mins = Math.round(parseFloat(hours) * 60) || 0;
+            let endM = (base + mins) % (24 * 60);
+            if (endM < 0) endM += 24 * 60;
+            const hh = Math.floor(endM / 60);
+            const mm = endM % 60;
+            return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+        }
+        function saturdayNetMesaiHours(startH, endH) {
+            const t = calcTotalHours(startH, endH);
+            const l = calcLunch1230(startH, endH);
+            return Math.max(0, t - l);
+        }
+        function endHhmmForSaturdayNet(startH, netH) {
+            const sm = hhmmToMin(startH) ?? 480;
+            const target = parseFloat(netH);
+            if (!(target > 0)) return String(startH || "08:00");
+            let bestEnd = "18:00";
+            let bestErr = 1e9;
+            for (let D = 1; D <= 36 * 60; D++) {
+                const em = (sm + D) % (24 * 60);
+                const endStr = `${String(Math.floor(em / 60)).padStart(2, "0")}:${String(em % 60).padStart(2, "0")}`;
+                const n = saturdayNetMesaiHours(startH, endStr);
+                const err = Math.abs(n - target);
+                if (err < bestErr - 1e-9) {
+                    bestErr = err;
+                    bestEnd = endStr;
+                }
+            }
+            return bestEnd;
+        }
+        function dayDefaultsCalc(meta, endUse) {
+            const wd = meta.wd;
+            const isHoliday = meta.hol;
+            const isHalfHoliday = meta.halfHol;
+            let start;
+            let end0;
+            let default_bayram;
+            let pazar0;
+            let bayram0;
+            if (isHoliday) {
+                if (isHalfHoliday) {
+                    start = "13:00";
+                    end0 = "17:00";
+                    default_bayram = 0.5;
+                } else {
+                    start = "08:00";
+                    end0 = "17:00";
+                    default_bayram = 1.0;
+                }
+                pazar0 = 0;
+                bayram0 = 0;
+            } else if (wd === 6) {
+                start = "08:00";
+                end0 = "17:00";
+                pazar0 = 1.0;
+                bayram0 = 0.0;
+            } else if (wd === 5) {
+                start = "08:00";
+                end0 = "18:00";
+                pazar0 = 0.0;
+                bayram0 = 0.0;
+            } else {
+                start = "18:00";
+                end0 = "21:00";
+                pazar0 = 0.0;
+                bayram0 = 0.0;
+            }
+            const end = endUse != null ? endUse : end0;
+            const total = calcTotalHours(start, end) || 0;
+            const lunch = calcLunch1213(start, end) || 0;
+            const net = Math.max(0, total - lunch);
+            let pct60;
+            let pazar = pazar0;
+            let bayram = bayram0;
+            if (isHoliday) {
+                const holidayLunch = calcLunch1230(start, end) || 0;
+                const holidayNet = Math.max(0, total - holidayLunch);
+                const sm = hhmmToMin(start);
+                const em = hhmmToMin(end);
+                const crosses = sm != null && em != null && em <= sm;
+                if (!crosses && em != null && em <= 16 * 60) {
+                    pct60 = holidayNet;
+                    pazar = 0;
+                    bayram = 0;
+                } else {
+                    const baseTotal = calcTotalHours(start, "17:00") || 0;
+                    const baseLunch = calcLunch1230(start, "17:00") || 0;
+                    const baseNet = Math.max(0, baseTotal - baseLunch);
+                    pct60 = Math.max(0, holidayNet - baseNet);
+                    pazar = 0;
+                    bayram = default_bayram;
+                }
+            } else if (wd === 6) {
+                if (net < 7.0) {
+                    pct60 = net;
+                    pazar = 0;
+                    bayram = 0;
+                } else {
+                    pct60 = Math.max(0, net - 8.0);
+                    if (isHoliday) {
+                        pazar = 0;
+                        bayram = 1.0;
+                    } else {
+                        pazar = 1.0;
+                        bayram = 0.0;
+                    }
+                }
+            } else if (wd === 5) {
+                const lunchSat = calcLunch1230(start, end) || 0;
+                pct60 = Math.max(0, total - lunchSat);
+            } else {
+                pct60 = total;
+            }
+            return { pct60, pazar, bayram };
+        }
+        function bulkCellContribution(meta, raw) {
+            const raw0 = String(raw || "")
+                .trim()
+                .replace(/\s/g, "")
+                .replace(",", ".");
+            if (!raw0) return { pct60: 0, pazar: 0, bayram: 0 };
+            const isSpecial = meta.hol || meta.wd === 6;
+            const start = meta.start || "08:00";
+            let end = start;
+            if (isSpecial && raw0.includes("+")) {
+                const idx = raw0.indexOf("+");
+                const left = raw0.slice(0, idx).trim();
+                const right = raw0.slice(idx + 1).trim();
+                const baseVal = parseFloat(left);
+                const extraHours = parseFloat(right);
+                if (!Number.isFinite(baseVal) || !Number.isFinite(extraHours) || extraHours < 0)
+                    return { pct60: 0, pazar: 0, bayram: 0 };
+                if (baseVal !== 1 && baseVal !== 0.5) return { pct60: 0, pazar: 0, bayram: 0 };
+                const baseEnd = meta.defEnd || "17:00";
+                end = addHoursHhmm(baseEnd, extraHours);
+                const pct60 = extraHours;
+                if (meta.hol) return { pct60, pazar: 0, bayram: baseVal };
+                return { pct60, pazar: baseVal, bayram: 0 };
+            }
+            if (isSpecial) {
+                const val = parseFloat(raw0);
+                if (!Number.isFinite(val) || val <= 0) return { pct60: 0, pazar: 0, bayram: 0 };
+                if (val === 1 || val === 0.5) {
+                    const defE = meta.defEnd || start;
+                    if (meta.hol) return { pct60: 0, pazar: 0, bayram: val };
+                    return { pct60: 0, pazar: val, bayram: 0 };
+                }
+                end = addHoursHhmm(start, val);
+                return { pct60: val, pazar: 0, bayram: 0 };
+            }
+            const hours = parseFloat(raw0);
+            if (!Number.isFinite(hours) || hours <= 0) return { pct60: 0, pazar: 0, bayram: 0 };
+            const isSatNoHol = meta.wd === 5 && !meta.hol;
+            if (isSatNoHol) end = endHhmmForSaturdayNet(start, hours);
+            else end = addHoursHhmm(start, hours);
+            const c = dayDefaultsCalc(meta, end);
+            return { pct60: c.pct60, pazar: c.pazar, bayram: c.bayram };
+        }
+        function fmtBulkNum(n) {
+            if (!Number.isFinite(n) || Math.abs(n) < 1e-9) return "—";
+            if (Math.abs(n - Math.round(n)) < 1e-6) return String(Math.round(n));
+            let s = n.toFixed(2).replace(/\.?0+$/, "");
+            return s.replace(".", ",");
+        }
+        function recalcBulkTotals() {
+            let g60 = 0;
+            let gp = 0;
+            let gb = 0;
+            gridTable.querySelectorAll("tbody tr[data-bulk-user-id]").forEach((tr) => {
+                let r60 = 0;
+                let rp = 0;
+                let rb = 0;
+                tr.querySelectorAll("input[type='text'][name^='cell_']").forEach((inp) => {
+                    const name = inp.getAttribute("name") || "";
+                    const m = name.match(/^cell_\d+_(.+)$/);
+                    if (!m) return;
+                    const iso = m[1];
+                    const meta = metaByIso.get(iso);
+                    if (!meta) return;
+                    const t = bulkCellContribution(meta, inp.value);
+                    r60 += t.pct60;
+                    rp += t.pazar;
+                    rb += t.bayram;
+                });
+                g60 += r60;
+                gp += rp;
+                gb += rb;
+                const c60 = tr.querySelector(".bulk-total-pct60");
+                const cp = tr.querySelector(".bulk-total-pazar");
+                const cb = tr.querySelector(".bulk-total-bayram");
+                if (c60) c60.textContent = fmtBulkNum(r60);
+                if (cp) cp.textContent = fmtBulkNum(rp);
+                if (cb) cb.textContent = fmtBulkNum(rb);
+            });
+            const ge60 = document.getElementById("bulkGrandPct60");
+            const gep = document.getElementById("bulkGrandPazar");
+            const geb = document.getElementById("bulkGrandBayram");
+            if (ge60) ge60.textContent = fmtBulkNum(g60);
+            if (gep) gep.textContent = fmtBulkNum(gp);
+            if (geb) geb.textContent = fmtBulkNum(gb);
+        }
+        gridTable.addEventListener("input", (e) => {
+            const t = e.target;
+            if (t && t.matches && t.matches("input[type='text'][name^='cell_']")) recalcBulkTotals();
+        });
+        recalcBulkTotals();
+
         const clearActiveRows = () => {
             gridTable.querySelectorAll("tbody tr.active-row").forEach((tr) => tr.classList.remove("active-row"));
         };
-        gridTable.querySelectorAll("tbody tr").forEach((tr) => {
+        gridTable.querySelectorAll("tbody tr[data-bulk-user-id]").forEach((tr) => {
             tr.querySelectorAll("input[type='text']").forEach((inp) => {
                 inp.addEventListener("focus", () => {
                     clearActiveRows();
