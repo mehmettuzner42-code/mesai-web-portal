@@ -49,6 +49,15 @@ body {
     background: #1e40af;
 }
 
+.topbar a.topbar-nav-personel {
+    background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.topbar a.topbar-nav-personel:hover {
+    background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
+}
+
 .topbar nav {
     display: flex;
     align-items: center;
@@ -112,7 +121,7 @@ button {
     cursor: pointer;
 }
 
-button:hover {
+button:hover:not(.admin-sidebar-btn) {
     background: #1e40af;
 }
 
@@ -230,6 +239,139 @@ table form {
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+/* Personel sayfası: sol yan menü + ana içerik */
+.admin-users-layout {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    margin-top: 8px;
+}
+
+.admin-users-sidebar {
+    flex: 0 0 248px;
+    width: 248px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: sticky;
+    top: 12px;
+}
+
+.admin-users-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.admin-sidebar-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 46px;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.25;
+    color: #fff;
+    cursor: pointer;
+    text-align: left;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+
+.admin-sidebar-btn:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+    transform: translateY(-1px);
+}
+
+.admin-sidebar-btn__icon {
+    flex: 0 0 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.admin-sidebar-btn__icon svg {
+    display: block;
+}
+
+.admin-sidebar-btn__text {
+    flex: 1;
+    min-width: 0;
+}
+
+.admin-sidebar-btn--charts {
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+}
+
+.admin-sidebar-btn--bulk {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+}
+
+.admin-sidebar-btn--lock {
+    background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+}
+
+.admin-sidebar-btn--add-user {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.admin-sidebar-btn--authorized {
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+}
+
+.admin-sidebar-btn--unit {
+    background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+}
+
+.admin-sidebar-btn--terminated {
+    background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+}
+
+.admin-sidebar-btn--import {
+    background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+}
+
+.admin-sidebar-btn--backup-out {
+    background: linear-gradient(135deg, #475569 0%, #334155 100%);
+}
+
+.admin-sidebar-btn--backup-in {
+    background: linear-gradient(135deg, #be123c 0%, #9f1239 100%);
+}
+
+.admin-sidebar-form {
+    margin: 0;
+    width: 100%;
+}
+
+@media (max-width: 900px) {
+    .admin-users-layout {
+        flex-direction: column;
+    }
+
+    .admin-users-sidebar {
+        position: relative;
+        top: auto;
+        flex: none;
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .admin-sidebar-btn,
+    .admin-sidebar-form {
+        flex: 1 1 calc(50% - 6px);
+        min-width: min(248px, 100%);
+    }
 }
 
 .admin-export-bar {

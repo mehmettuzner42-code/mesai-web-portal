@@ -1,40 +1,71 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="header-row">
-    <div class="admin-top-actions">
-        {% if is_founder %}
-        <a class="button-link" href="{{ url_for('admin_import_period_excel') }}">İçe Aktar Excel</a>
-        {% endif %}
+<div class="admin-users-layout">
+    <aside class="admin-users-sidebar" aria-label="Yönetim kısayolları">
         {% if is_founder or can_charts_screen %}
-        <a class="button-link" href="{{ url_for('admin_users_charts') }}">Grafik</a>
-        {% endif %}
-        {% if is_founder or can_period_lock %}
-        <a class="button-link" href="{{ url_for('admin_period_locks') }}">Dönem Kilidi</a>
-        {% endif %}
-        {% if is_founder or can_add_user %}
-        <a class="button-link" href="{{ url_for('admin_add_user') }}">Kişi Ekle</a>
-        {% endif %}
-        {% if is_founder %}
-        <a class="button-link" href="{{ url_for('admin_authorized_users') }}">Yetkili Kullanıcılar</a>
+        <a class="admin-sidebar-btn admin-sidebar-btn--charts" href="{{ url_for('admin_users_charts') }}">
+            <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V5M9 19v-7M14 19V9M19 19v-4"/></svg></span>
+            <span class="admin-sidebar-btn__text">Grafik</span>
+        </a>
         {% endif %}
         {% if is_founder or can_bulk_entry %}
-        <a class="button-link" href="{{ url_for('admin_users_bulk_entry') }}">Toplu Mesai Girişi</a>
+        <a class="admin-sidebar-btn admin-sidebar-btn--bulk" href="{{ url_for('admin_users_bulk_entry') }}">
+            <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 4v16"/></svg></span>
+            <span class="admin-sidebar-btn__text">Toplu Mesai Girişi</span>
+        </a>
         {% endif %}
-        {% if is_founder or can_terminated_users %}
-        <a class="button-link" href="{{ url_for('admin_terminated_users') }}">İşten Ayrılanlar</a>
+        {% if is_founder or can_period_lock %}
+        <a class="admin-sidebar-btn admin-sidebar-btn--lock" href="{{ url_for('admin_period_locks') }}">
+            <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg></span>
+            <span class="admin-sidebar-btn__text">Dönem Kilidi</span>
+        </a>
         {% endif %}
-        {% if is_founder or can_unit_change %}
-        <a class="button-link" href="{{ url_for('admin_unit_changes') }}">Birim Değişikliği</a>
+        {% if is_founder or can_add_user %}
+        <a class="admin-sidebar-btn admin-sidebar-btn--add-user" href="{{ url_for('admin_add_user') }}">
+            <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M4 20v-1a5 5 0 015-5h0a5 5 0 015 5v1M17 10v4M19 12h-4"/></svg></span>
+            <span class="admin-sidebar-btn__text">Kişi Ekle</span>
+        </a>
         {% endif %}
         {% if is_founder %}
-        <a class="button-link" href="{{ url_for('admin_backup_export') }}">Yedek Al</a>
-        <form id="backupImportForm" method="post" action="{{ url_for('admin_backup_import') }}" enctype="multipart/form-data" style="display:inline;">
+        <a class="admin-sidebar-btn admin-sidebar-btn--authorized" href="{{ url_for('admin_authorized_users') }}">
+            <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7L12 17l-6.3 4 2.3-7-6-4.6h7.6L12 2z"/></svg></span>
+            <span class="admin-sidebar-btn__text">Yetkili Kullanıcılar</span>
+        </a>
+        {% endif %}
+        {% if is_founder or can_unit_change %}
+        <a class="admin-sidebar-btn admin-sidebar-btn--unit" href="{{ url_for('admin_unit_changes') }}">
+            <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10l8-6 8 6v10"/><path d="M9 20v-6h6v6M8 4h8"/></svg></span>
+            <span class="admin-sidebar-btn__text">Birim Değişikliği</span>
+        </a>
+        {% endif %}
+        {% if is_founder or can_terminated_users %}
+        <a class="admin-sidebar-btn admin-sidebar-btn--terminated" href="{{ url_for('admin_terminated_users') }}">
+            <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3"/><path d="M4 20v-1a5 5 0 015-5h2M16 3l4 4M20 3l-4 4"/></svg></span>
+            <span class="admin-sidebar-btn__text">İşten Ayrılanlar</span>
+        </a>
+        {% endif %}
+        {% if is_founder %}
+        <a class="admin-sidebar-btn admin-sidebar-btn--import" href="{{ url_for('admin_import_period_excel') }}">
+            <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 11l4 4 4-4"/><rect x="4" y="17" width="16" height="4" rx="1"/></svg></span>
+            <span class="admin-sidebar-btn__text">İçe Aktar Excel</span>
+        </a>
+        <a class="admin-sidebar-btn admin-sidebar-btn--backup-out" href="{{ url_for('admin_backup_export') }}">
+            <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 21h14"/></svg></span>
+            <span class="admin-sidebar-btn__text">Yedek Al</span>
+        </a>
+        <form id="backupImportForm" class="admin-sidebar-form" method="post" action="{{ url_for('admin_backup_import') }}" enctype="multipart/form-data">
             <input id="backupFileInput" type="file" name="backup_file" accept=".json,application/json" style="display:none;">
-            <button type="button" id="backupImportBtn">Yedek İçe</button>
+            <button type="button" id="backupImportBtn" class="admin-sidebar-btn admin-sidebar-btn--backup-in">
+                <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9M8 13l4 4 4-4"/><path d="M5 3h14"/></svg></span>
+                <span class="admin-sidebar-btn__text">Yedek İçe</span>
+            </button>
         </form>
         {% endif %}
-    </div>
-</div>
+    </aside>
+    <div class="admin-users-main">
+        <div class="header-row">
+            <h2 style="margin:0;font-size:1.25rem;">Personel</h2>
+        </div>
 
 <div class="card">
     <form method="post" action="{{ url_for('admin_export_selected_users_xlsx') }}">
@@ -168,6 +199,8 @@
             </label>
         </div>
     </form>
+</div>
+    </div>
 </div>
 
 <dialog id="rowOptionsDialog" class="row-options-dialog">
