@@ -1294,6 +1294,18 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    # Aktif oturum varken /login acilirsa ust menu + giris formu birlikte gorunmesin;
+    # gecerli kullanici varsa panele yonlendir, yoksa (silinmis/gecersiz id) oturumu temizle.
+    if request.method == "GET":
+        raw_uid = session.get("user_id")
+        if raw_uid is not None and raw_uid != "":
+            try:
+                uid_int = int(raw_uid)
+            except (TypeError, ValueError):
+                uid_int = 0
+            if uid_int and User.query.get(uid_int):
+                return redirect(url_for("dashboard"))
+            session.clear()
     if request.method == "POST":
         ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
         if is_rate_limited(f"login:{ip}", limit=15, window_sec=60):
