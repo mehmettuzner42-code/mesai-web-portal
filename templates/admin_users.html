@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="admin-users-page-bleed">
+    <div class="admin-users-head">
+        <h2 class="admin-users-title">Personel</h2>
+    </div>
 <div class="admin-users-layout">
     <aside class="admin-users-sidebar" aria-label="Yönetim kısayolları">
         {% if is_founder or can_charts_screen %}
@@ -64,10 +67,6 @@
         {% endif %}
     </aside>
     <div class="admin-users-main">
-        <div class="header-row">
-            <h2 style="margin:0;font-size:1.25rem;">Personel</h2>
-        </div>
-
 <div class="card">
     <form method="post" action="{{ url_for('admin_export_selected_users_xlsx') }}">
         {% if is_founder or can_filters %}

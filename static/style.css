@@ -258,12 +258,27 @@ table form {
     box-sizing: border-box;
 }
 
+.admin-users-head {
+    margin-bottom: 6px;
+}
+
+.admin-users-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
 /* Personel sayfası: sol yan menü + ana içerik */
 .admin-users-layout {
     display: flex;
     gap: 20px;
     align-items: flex-start;
-    margin-top: 8px;
+    margin-top: 0;
+}
+
+/* Baslik ust satirda; kart ile yan menu ayni hizada baslasin */
+.admin-users-main > .card {
+    margin-top: 0;
 }
 
 .admin-users-sidebar {
