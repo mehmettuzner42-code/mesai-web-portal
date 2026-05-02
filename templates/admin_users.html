@@ -1,9 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="admin-users-page-bleed">
-    <div class="admin-users-head">
-        <h2 class="admin-users-title">Personel</h2>
-    </div>
+    <div class="admin-users-head admin-users-head--spacer" aria-hidden="true"></div>
 <div class="admin-users-layout">
     <aside class="admin-users-sidebar" aria-label="Yönetim kısayolları">
         {% if is_founder or can_charts_screen %}
@@ -166,9 +164,7 @@
                 </select>
             </label>
             <button type="submit">Toplu Excel Raporu</button>
-        </div>
-        {% if is_founder %}
-        <div class="admin-export-bar" style="margin-top:8px;">
+            {% if is_founder %}
             <button
                 type="submit"
                 class="danger-link"
@@ -176,8 +172,8 @@
                 formmethod="post"
                 onclick="return confirm('Seçilen yıl/dönem için TÜM kullanıcıların verileri silinsin mi?');"
             >Veri Sil</button>
+            {% endif %}
         </div>
-        {% endif %}
         <div class="admin-sign-grid">
             <label>Şef Ünvan
                 <input type="text" name="chef_title" value="{{ sign_fields.chef_title }}">

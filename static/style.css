@@ -258,14 +258,11 @@ table form {
     box-sizing: border-box;
 }
 
-.admin-users-head {
+/* Baslik kaldirildi; onceki "Personel" satiri + alt bosluk korunur */
+.admin-users-head--spacer {
     margin-bottom: 6px;
-}
-
-.admin-users-title {
-    margin: 0;
-    font-size: 1.25rem;
-    font-weight: 700;
+    min-height: calc(1.25rem * 1.35);
+    box-sizing: border-box;
 }
 
 /* Personel sayfası: sol yan menü + ana içerik */
