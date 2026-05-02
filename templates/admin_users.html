@@ -301,6 +301,7 @@
     const unitTransferDate = document.getElementById("unitTransferDate");
     const unitChangeCancelBtn = document.getElementById("unitChangeCancelBtn");
     const usersTable = document.getElementById("usersTable");
+    const usersListForm = usersTable ? usersTable.closest("form") : null;
     const usersSelectAll = document.getElementById("usersSelectAll");
     const usersFilterDaire = document.getElementById("usersFilterDaire");
     const usersFilterSube = document.getElementById("usersFilterSube");
@@ -312,6 +313,20 @@
     const sortStorageKey = `adminUsersSort:${String({{ session.get('user_id') or 0 }})}`;
     const sortState = { key: null, dir: "asc" };
     if (!usersTable || !usersSelectAll) return;
+
+    if (usersListForm) {
+        usersListForm.addEventListener("submit", (e) => {
+            const sub = e.submitter;
+            const fa = (sub && sub.getAttribute("formaction")) || "";
+            if (fa.includes("delete-period-all")) return;
+            usersTable.querySelectorAll("tbody tr.selectable-row").forEach((tr) => {
+                if (tr.style.display === "none") {
+                    const cb = tr.querySelector("input.row-select");
+                    if (cb) cb.checked = false;
+                }
+            });
+        });
+    }
 
     document.querySelectorAll(".row-options-btn").forEach((btn) => {
         btn.addEventListener("click", () => {

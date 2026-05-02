@@ -176,6 +176,18 @@ class UnitChange(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+def clear_bulk_mesai_template_person_slot(ws, row60: int):
+    """Toplu mesai Excel sablonunda bir personel satir ciftinin veri hucrelerini temizler."""
+    row15 = row60 + 1
+    cols = [3, 4] + list(range(7, 41))
+    for row in (row60, row15):
+        for c in cols:
+            cell = ws.cell(row=row, column=c)
+            if isinstance(cell, MergedCell):
+                continue
+            cell.value = None
+
+
 def fmt_num(value: float) -> str:
     if value is None:
         return ""
@@ -287,6 +299,32 @@ def add_hours_hhmm(hhmm: str, hours: float) -> str:
     hh = end_minutes // 60
     mm = end_minutes % 60
     return f"{hh:02d}:{mm:02d}"
+
+
+def saturday_net_mesai_hours(start_hhmm: str, end_hhmm: str) -> float:
+    """Cumartesi net %60 suresi: brut - 12:30-13:30 ogle (vardiya ile kesisim)."""
+    t = calc_total_hours(start_hhmm, end_hhmm) or 0.0
+    l = calc_lunch_1230_1330(start_hhmm, end_hhmm) or 0.0
+    return max(0.0, t - l)
+
+
+def end_hhmm_for_saturday_net(start_hhmm: str, net_hours: float) -> str:
+    """Baslangic sabit; net mesai saati net_hours olacak sekilde en yakin bitis (HH:MM)."""
+    sm = hhmm_to_minutes(start_hhmm) or 480
+    target = float(net_hours)
+    if target <= 0:
+        return str(start_hhmm or "08:00")
+    best_end = "18:00"
+    best_err = 1e9
+    for D in range(1, 36 * 60 + 1):
+        em = (sm + D) % (24 * 60)
+        end_str = f"{em // 60:02d}:{em % 60:02d}"
+        n = saturday_net_mesai_hours(start_hhmm, end_str)
+        err = abs(n - target)
+        if err < best_err - 1e-9:
+            best_err = err
+            best_end = end_str
+    return best_end
 
 
 def tr_upper(text: str) -> str:
@@ -644,7 +682,8 @@ def day_defaults(target_date: date, end_time_override: str = None):
             else:
                 pazar, bayram = 1.0, 0.0
     elif wd == 5:
-        pct60 = max(0.0, total - 1.0)
+        lunch_sat = calc_lunch_1230_1330(start, end) or 0.0
+        pct60 = max(0.0, total - lunch_sat)
     else:
         pct60 = total
 
@@ -1654,8 +1693,16 @@ def admin_users_bulk_entry():
                         continue
                     if hours <= 0:
                         continue
-                    end = add_hours_hhmm(start, hours)
-                    calc = day_defaults(d, end)
+                    # Cumartesi (resmi tatil degil): hucredeki sayi = net %60 (ogle 12:30-13:30
+                    # dusulmus). Bitis bu nete gore tersine hesaplanir (or. 9 -> 18:00, 14 -> 23:00).
+                    wd = d.weekday()
+                    is_sat_no_holiday = wd == 5 and not bool(defaults.get("isHoliday"))
+                    if is_sat_no_holiday:
+                        end = end_hhmm_for_saturday_net(start, hours)
+                        calc = day_defaults(d, end)
+                    else:
+                        end = add_hours_hhmm(start, hours)
+                        calc = day_defaults(d, end)
                     pct60 = float(calc.get("pct60", 0) or 0)
                     pct15 = float(calc.get("pct15", 0) or 0)
                     pazar = float(calc.get("pazar", 0) or 0)
@@ -3184,6 +3231,8 @@ def admin_export_selected_users_xlsx():
     max_row_for_people = 206
     row_step = 2
     person_capacity = ((max_row_for_people - base_row) // row_step) + 1
+    for slot_idx in range(person_capacity):
+        clear_bulk_mesai_template_person_slot(ws, base_row + (slot_idx * row_step))
     if len(export_rows) > person_capacity:
         flash(f"Şablon en fazla {person_capacity} personel destekliyor.", "error")
         return redirect(url_for("admin_users"))
