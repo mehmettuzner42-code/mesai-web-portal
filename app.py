@@ -3970,12 +3970,11 @@ def reports():
         .order_by(OvertimeEntry.work_date.asc(), OvertimeEntry.start_time.asc(), OvertimeEntry.id.asc())
         .all()
     )
-    period_rows = grouped_period_rows(period_entries_raw)
     period_total = {
-        "pct60": sum(e["pct60"] for e in period_rows),
-        "pct15": sum(e["pct15"] for e in period_rows),
-        "pazar": sum(e["pazar"] for e in period_rows),
-        "bayram": sum(e["bayram"] for e in period_rows),
+        "pct60": sum(float(e.pct60 or 0) for e in period_entries_raw),
+        "pct15": sum(float(e.pct15 or 0) for e in period_entries_raw),
+        "pazar": sum(float(e.pazar or 0) for e in period_entries_raw),
+        "bayram": sum(float(e.bayram or 0) for e in period_entries_raw),
     }
     yearly_entries = [e for e in all_entries if period_year(period_start_for_date(e.work_date).year, period_start_for_date(e.work_date).month) == selected_year]
     year_rows = grouped_period_rows(yearly_entries)
@@ -3993,7 +3992,7 @@ def reports():
         selected_year=selected_year,
         period_options=period_options,
         active_start=active_start,
-        rows=period_rows,
+        rows=period_entries_raw,
         period_start=p_start,
         period_end=p_end,
         period_total=period_total,

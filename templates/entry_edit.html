@@ -5,16 +5,16 @@
 </div>
 
 <div class="card">
-    <form method="post" class="grid two-col entry-form" id="editForm">
+    <form method="post" action="{{ url_for('edit_entry', entry_id=entry.id) }}" class="grid two-col entry-form" id="editForm">
         <input type="hidden" name="back" value="{{ back }}">
         <label>Tarih
-            <input type="date" id="work_date" name="work_date" value="{{ entry.work_date.isoformat() }}" required>
+            <input type="date" class="picker-only-dt" id="work_date" name="work_date" value="{{ entry.work_date.isoformat() }}" required autocomplete="off">
         </label>
         <label>Başlama
-            <input type="time" id="start_time" name="start_time" value="{{ entry.start_time }}" required>
+            <input type="time" class="picker-only-dt" id="start_time" name="start_time" value="{{ entry.start_time }}" required autocomplete="off" step="60">
         </label>
         <label>Bitiş
-            <input type="time" id="end_time" name="end_time" value="{{ entry.end_time }}" required>
+            <input type="time" class="picker-only-dt" id="end_time" name="end_time" value="{{ entry.end_time }}" required autocomplete="off" step="60">
         </label>
         <label>%60
             <input id="pct60" name="pct60" value="{{ fmt_num(entry.pct60) }}">
@@ -109,8 +109,22 @@ document.getElementById("pct60").addEventListener("change", recalcFrom60);
 document.getElementById("pct60").addEventListener("input", recalcFrom60);
 document.getElementById("work_date").addEventListener("change", recalcFromEndTime);
 document.getElementById("start_time").addEventListener("change", recalcFromEndTime);
-document.getElementById("start_time").addEventListener("input", recalcFromEndTime);
 document.getElementById("end_time").addEventListener("change", recalcFromEndTime);
-document.getElementById("end_time").addEventListener("input", recalcFromEndTime);
+(function bindPickerOnlyInputs(root) {
+    root.querySelectorAll(".picker-only-dt").forEach((el) => {
+        el.addEventListener("keydown", (e) => {
+            if (e.key === "Tab" || e.key === "Escape" || e.key === "Enter") return;
+            if (e.key && e.key.startsWith("Arrow")) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            e.preventDefault();
+        });
+        el.addEventListener("paste", (e) => e.preventDefault());
+        el.addEventListener("focus", () => {
+            try {
+                if (typeof el.showPicker === "function") el.showPicker();
+            } catch (_e) {}
+        });
+    });
+})(document);
 </script>
 {% endblock %}

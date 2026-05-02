@@ -17,14 +17,14 @@
     <h3>Mesai Girişi</h3>
     <form method="post" class="grid two-col entry-form mobile-entry-form">
         <label>Tarih
-            <input type="date" name="work_date" id="work_date" required>
+            <input type="date" class="picker-only-dt" name="work_date" id="work_date" required autocomplete="off">
         </label>
         <div class="entry-spacer" aria-hidden="true"></div>
         <label>Başlama
-            <input type="time" name="start_time" id="start_time" required>
+            <input type="time" class="picker-only-dt" name="start_time" id="start_time" required autocomplete="off" step="60">
         </label>
         <label>Bitiş
-            <input type="time" name="end_time" id="end_time" required>
+            <input type="time" class="picker-only-dt" name="end_time" id="end_time" required autocomplete="off" step="60">
         </label>
         <label>%60
             <input name="pct60" id="pct60" placeholder="0">
@@ -181,6 +181,22 @@ document.getElementById("start_time").addEventListener("change", recalc);
 document.getElementById("end_time").addEventListener("change", recalc);
 document.getElementById("pct60").addEventListener("change", on60Changed);
 document.getElementById("pct60").addEventListener("input", on60Changed);
+(function bindPickerOnlyInputs(root) {
+    root.querySelectorAll(".picker-only-dt").forEach((el) => {
+        el.addEventListener("keydown", (e) => {
+            if (e.key === "Tab" || e.key === "Escape" || e.key === "Enter") return;
+            if (e.key && e.key.startsWith("Arrow")) return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            e.preventDefault();
+        });
+        el.addEventListener("paste", (e) => e.preventDefault());
+        el.addEventListener("focus", () => {
+            try {
+                if (typeof el.showPicker === "function") el.showPicker();
+            } catch (_e) {}
+        });
+    });
+})(document);
 document.addEventListener("DOMContentLoaded", function () {
     const d = document.getElementById("work_date");
     if (!d.value) d.value = new Date().toISOString().slice(0,10);

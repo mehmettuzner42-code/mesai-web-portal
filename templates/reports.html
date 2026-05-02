@@ -65,9 +65,9 @@
                     <td>{{ fmt_num(r.pazar) }}</td>
                     <td>{{ fmt_num(r.bayram) }}</td>
                     <td>{{ r.description }}</td>
-                    <td><a class="button-link mini" href="{{ url_for('edit_entry', entry_id=r.entry_id, back='reports') }}">Düzenle</a></td>
+                    <td><a class="button-link mini" href="{{ url_for('edit_entry', entry_id=r.id, back='reports') }}">Düzenle</a></td>
                     <td>
-                        <form method="post" action="{{ url_for('delete_entry', entry_id=r.entry_id) }}" onsubmit="return confirm('Bu veriyi silmek istediğinizden emin misiniz?');">
+                        <form method="post" action="{{ url_for('delete_entry', entry_id=r.id) }}" onsubmit="return confirm('Bu veriyi silmek istediğinizden emin misiniz?');">
                             <input type="hidden" name="back" value="reports">
                             <button type="submit" class="danger">Sil</button>
                         </form>
