@@ -127,7 +127,7 @@ button {
     cursor: pointer;
 }
 
-button:hover:not(.admin-sidebar-btn):not(.row-opt-btn) {
+button:hover:not(.admin-sidebar-btn):not(.row-opt-btn):not(.row-options-btn) {
     background: #1e40af;
 }
 
@@ -510,12 +510,45 @@ table form {
 }
 
 .row-options-btn {
-    background: #0f172a;
-    color: #fff;
-    border-radius: 8px;
-    padding: 3px 10px;
-    font-size: 18px;
-    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    margin: 0 auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+    color: #475569;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    cursor: pointer;
+    line-height: 0;
+    vertical-align: middle;
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease,
+        box-shadow 0.15s ease,
+        transform 0.12s ease;
+}
+
+.row-options-btn:hover {
+    background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+    border-color: #cbd5e1;
+    color: #0f172a;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1);
+    transform: translateY(-1px);
+}
+
+.row-options-btn:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+.row-options-btn svg {
+    display: block;
+    pointer-events: none;
 }
 
 .row-options-dialog {

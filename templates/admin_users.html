@@ -112,6 +112,7 @@
                                 type="button"
                                 class="row-options-btn"
                                 title="Seçenekler"
+                                aria-label="Seçenekler"
                                 data-user-name="{{ row.profile.ad_soyad or '-' }}"
                                 data-open-url="{{ url_for('admin_impersonate', target_user_id=row.user.id) }}"
                                 data-reset-url="{{ url_for('admin_reset_password', target_user_id=row.user.id) }}"
@@ -133,7 +134,7 @@
                                 data-can-delete="1"
                                 data-delete-url="{{ url_for('admin_delete_user', target_user_id=row.user.id) }}"
                                 {% endif %}
-                            >⋯</button>
+                            ><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="18" r="2"/></svg></button>
                         </td>
                     </tr>
                     {% else %}
