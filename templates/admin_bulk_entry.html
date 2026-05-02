@@ -188,6 +188,18 @@
                     {% endfor %}
                 </select>
             </label>
+            {% if is_founder or can_view_filters %}
+            <label class="filter-col-daire">Daire Başkanlığı
+                <select id="bulkFilterDaire">
+                    <option value="">Tümü</option>
+                </select>
+            </label>
+            <label class="filter-col-sube">Şube Müdürlüğü
+                <select id="bulkFilterSube">
+                    <option value="">Tümü</option>
+                </select>
+            </label>
+            {% endif %}
         </div>
 
         <div class="table-wrap recent-scroll">
@@ -211,8 +223,8 @@
                         <td class="row-order-cell"></td>
                         <td>{{ row.profile.sicil_no or "-" }}</td>
                         <td>{{ row.profile.ad_soyad or "-" }}</td>
-                        <td>{{ row.profile.daire_baskanligi or "-" }}</td>
-                        <td>{{ row.profile.sube_mudurlugu or "-" }}</td>
+                        <td class="filter-daire">{{ row.profile.daire_baskanligi or "-" }}</td>
+                        <td class="filter-sube">{{ row.profile.sube_mudurlugu or "-" }}</td>
                         <td>{{ row.profile.ekip_kodu or "-" }}</td>
                         <td>{{ row.user.email }}</td>
                     </tr>
@@ -287,13 +299,61 @@
         dir: ((sortDirInput?.value || "asc").trim().toLowerCase() === "desc" ? "desc" : "asc"),
     };
     const yearSelect = document.getElementById("bulkYearSelect");
+    const bulkFilterDaire = document.getElementById("bulkFilterDaire");
+    const bulkFilterSube = document.getElementById("bulkFilterSube");
     if (!table || !selectAll) return;
+    function visibleRows() {
+        return Array.from(table.querySelectorAll("tbody tr.selectable-row")).filter((tr) => tr.style.display !== "none");
+    }
     function refreshOrderNumbers() {
         let i = 1;
         Array.from(table.querySelectorAll("tbody tr.selectable-row")).forEach((tr) => {
             const cell = tr.querySelector(".row-order-cell");
-            if (cell) cell.textContent = String(i++);
+            if (!cell) return;
+            if (tr.style.display === "none") {
+                cell.textContent = "";
+            } else {
+                cell.textContent = String(i++);
+            }
         });
+    }
+    function refreshFilterOptions() {
+        if (!bulkFilterDaire || !bulkFilterSube) return;
+        const rows = Array.from(table.querySelectorAll("tbody tr.selectable-row"));
+        const daires = new Set();
+        const subes = new Set();
+        rows.forEach((tr) => {
+            daires.add((tr.querySelector(".filter-daire")?.textContent || "").trim());
+            subes.add((tr.querySelector(".filter-sube")?.textContent || "").trim());
+        });
+        const fill = (select, values) => {
+            const current = select.value;
+            const first = select.querySelector("option")?.outerHTML || "<option value=''>Tümü</option>";
+            select.innerHTML = first;
+            Array.from(values).filter((v) => v && v !== "-").sort((a, b) => a.localeCompare(b, "tr")).forEach((v) => {
+                const opt = document.createElement("option");
+                opt.value = v;
+                opt.textContent = v;
+                select.appendChild(opt);
+            });
+            select.value = current;
+        };
+        fill(bulkFilterDaire, daires);
+        fill(bulkFilterSube, subes);
+    }
+    function applyFilters() {
+        if (!bulkFilterDaire || !bulkFilterSube) return;
+        const daire = bulkFilterDaire.value;
+        const sube = bulkFilterSube.value;
+        Array.from(table.querySelectorAll("tbody tr.selectable-row")).forEach((tr) => {
+            const d = (tr.querySelector(".filter-daire")?.textContent || "").trim();
+            const s = (tr.querySelector(".filter-sube")?.textContent || "").trim();
+            const okD = !daire || d === daire;
+            const okS = !sube || s === sube;
+            tr.style.display = okD && okS ? "" : "none";
+        });
+        refreshOrderNumbers();
+        updateSelectAll();
     }
     function readCellText(tr, key) {
         const cell = tr.querySelector(`td:nth-child(${key + 1})`);
@@ -366,17 +426,43 @@
             updateSortIndicators();
         }
     }
+    function updateRowHighlight(checkbox) {
+        const tr = checkbox.closest("tr");
+        if (!tr) return;
+        tr.classList.toggle("selected-row", checkbox.checked);
+    }
     function updateSelectAll() {
-        const cbs = Array.from(table.querySelectorAll("input.row-select"));
-        const checked = cbs.filter((c) => c.checked).length;
-        selectAll.checked = cbs.length > 0 && checked === cbs.length;
-        selectAll.indeterminate = checked > 0 && checked < cbs.length;
+        const rows = visibleRows();
+        if (rows.length === 0) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            return;
+        }
+        const checks = rows.map((tr) => tr.querySelector("input.row-select")).filter(Boolean);
+        const checkedCount = checks.filter((c) => c.checked).length;
+        selectAll.checked = checkedCount === checks.length;
+        selectAll.indeterminate = checkedCount > 0 && checkedCount < checks.length;
     }
     selectAll.addEventListener("change", () => {
-        table.querySelectorAll("input.row-select").forEach((cb) => { cb.checked = selectAll.checked; });
+        visibleRows().forEach((tr) => {
+            const cb = tr.querySelector("input.row-select");
+            if (!cb) return;
+            cb.checked = selectAll.checked;
+            updateRowHighlight(cb);
+        });
         updateSelectAll();
     });
-    table.querySelectorAll("input.row-select").forEach((cb) => cb.addEventListener("change", updateSelectAll));
+    table.querySelectorAll("input.row-select").forEach((cb) => {
+        cb.addEventListener("change", () => {
+            updateRowHighlight(cb);
+            updateSelectAll();
+        });
+        updateRowHighlight(cb);
+    });
+    if (bulkFilterDaire && bulkFilterSube) {
+        bulkFilterDaire.addEventListener("change", applyFilters);
+        bulkFilterSube.addEventListener("change", applyFilters);
+    }
     sortableHeaders.forEach((th) => {
         th.addEventListener("click", () => {
             const key = th.dataset.sortKey;
@@ -386,6 +472,7 @@
                     ? "desc"
                     : "asc";
             applySort(key, nextDir);
+            if (bulkFilterDaire && bulkFilterSube) applyFilters();
         });
     });
     if (yearSelect) {
@@ -405,10 +492,15 @@
             form.submit();
         });
     }
-    refreshOrderNumbers();
+    refreshFilterOptions();
     restoreSortState();
     persistSortState();
-    updateSelectAll();
+    if (bulkFilterDaire && bulkFilterSube) {
+        applyFilters();
+    } else {
+        refreshOrderNumbers();
+        updateSelectAll();
+    }
 
     const BULK_DAY_META = {{ (bulk_grid_day_meta or []) | tojson }};
     const gridTable = document.getElementById("bulkEntryGridTable");

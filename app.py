@@ -1469,6 +1469,8 @@ def admin_users():
         can_charts_screen=can_charts_screen,
         can_filters=can_filters,
         can_add_user=can_add_user,
+        can_reset_password=can_reset_password,
+        can_change_email=can_change_email,
         can_period_lock=can_period_lock,
         can_bulk_entry=can_bulk_entry,
         can_terminated_users=can_terminated_users,
