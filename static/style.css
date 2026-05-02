@@ -121,7 +121,7 @@ button {
     cursor: pointer;
 }
 
-button:hover:not(.admin-sidebar-btn) {
+button:hover:not(.admin-sidebar-btn):not(.row-opt-btn) {
     background: #1e40af;
 }
 
@@ -239,6 +239,17 @@ table form {
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+/* Personel: container daraltmasini kir, yan menü viewport soluna yaslansin */
+.admin-users-page-bleed {
+    width: 100vw;
+    max-width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding-left: 0;
+    padding-right: 12px;
+    box-sizing: border-box;
 }
 
 /* Personel sayfası: sol yan menü + ana içerik */
@@ -374,6 +385,17 @@ table form {
     }
 }
 
+@media (max-width: 768px) {
+    .admin-users-page-bleed {
+        width: 100%;
+        max-width: 100%;
+        margin-left: 0;
+        margin-right: 0;
+        padding-left: 0;
+        padding-right: 8px;
+    }
+}
+
 .admin-export-bar {
     margin-top: 12px;
     display: flex;
@@ -496,30 +518,95 @@ table form {
 
 .row-options-actions {
     display: grid;
-    gap: 8px;
+    gap: 10px;
 }
 
-.row-options-actions .button-link,
-.row-options-actions form button {
+.row-opt-form {
+    margin: 0;
+    width: 100%;
+    display: block;
+}
+
+.row-opt-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     width: 100%;
     box-sizing: border-box;
-    text-align: center;
-    min-height: 34px;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    font-size: 12px;
-    line-height: 1 !important;
-    padding: 0 10px !important;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: none;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.25;
+    color: #fff;
+    cursor: pointer;
+    text-align: left;
+    justify-content: flex-start;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+    transition: filter 0.12s ease, transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+a.row-opt-btn {
+    display: flex;
+}
+
+.row-opt-btn:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+    transform: translateY(-1px);
+}
+
+.row-opt-btn__icon {
+    flex: 0 0 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.row-opt-btn__icon svg {
+    display: block;
+}
+
+.row-opt-btn__text {
+    flex: 1;
+    min-width: 0;
+}
+
+.row-opt--open {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+}
+
+.row-opt--permission {
+    background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+}
+
+.row-opt--reset {
+    background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+}
+
+.row-opt--email {
+    background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+}
+
+.row-opt--unit {
+    background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+}
+
+.row-opt--terminated {
+    background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+}
+
+.row-opt--delete {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
 }
 
 /* Hidden attribute'u modal buton stilleri override etmesin */
 .row-options-actions [hidden] {
     display: none !important;
-}
-
-.row-options-actions form {
-    margin: 0;
 }
 
 .row-options-footer {

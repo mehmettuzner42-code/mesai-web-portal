@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="admin-users-page-bleed">
 <div class="admin-users-layout">
     <aside class="admin-users-sidebar" aria-label="Yönetim kısayolları">
         {% if is_founder or can_charts_screen %}
@@ -202,37 +203,59 @@
 </div>
     </div>
 </div>
+</div>
 
 <dialog id="rowOptionsDialog" class="row-options-dialog">
     <h3 id="rowOptionsTitle">Seçenekler</h3>
     <div class="row-options-actions">
-        <a id="dlgOpenAs" class="button-link mini" href="#">Kullanıcı Olarak Aç</a>
+        <a id="dlgOpenAs" class="row-opt-btn row-opt--open" href="#">
+            <span class="row-opt-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 012 2v4M10 14L21 3M9 8H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4"/><circle cx="9" cy="7" r="3"/></svg></span>
+            <span class="row-opt-btn__text">Kullanıcı Olarak Aç</span>
+        </a>
         {% if is_founder %}
-        <a id="dlgPermission" class="button-link mini" href="#">Yetki Ver</a>
+        <a id="dlgPermission" class="row-opt-btn row-opt--permission" href="#">
+            <span class="row-opt-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7L12 17l-6.3 4 2.3-7-6-4.6h7.6L12 2z"/></svg></span>
+            <span class="row-opt-btn__text">Yetki Ver</span>
+        </a>
         {% endif %}
         {% if is_founder or can_reset_password %}
-        <form id="dlgResetForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı için geçici şifre oluşturulsun mu?');">
-            <button type="submit">Şifre Sıfırla</button>
+        <form id="dlgResetForm" class="row-opt-form" method="post" action="#" onsubmit="return confirm('Bu kullanıcı için geçici şifre oluşturulsun mu?');">
+            <button type="submit" class="row-opt-btn row-opt--reset">
+                <span class="row-opt-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></span>
+                <span class="row-opt-btn__text">Şifre Sıfırla</span>
+            </button>
         </form>
         {% endif %}
         {% if is_founder or can_change_email %}
-        <form id="dlgEmailForm" method="post" action="#">
-            <button type="submit">E-posta Değiştir</button>
-        </form>
-        {% endif %}
-        {% if is_founder %}
-        <form id="dlgDeleteForm" method="post" action="#" onsubmit="return confirm('Bu kullanıcı tüm verileriyle silinsin mi? Bu işlem geri alınamaz.');">
-            <button type="submit" class="danger">Kullanıcı Sil</button>
-        </form>
-        {% endif %}
-        {% if is_founder or can_terminated_users %}
-        <form id="dlgSetTerminatedForm" method="post" action="#">
-            <button type="submit" class="danger-link">İşten Ayrıldı</button>
+        <form id="dlgEmailForm" class="row-opt-form" method="post" action="#">
+            <button type="submit" class="row-opt-btn row-opt--email">
+                <span class="row-opt-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="M22 6l-10 7L2 6"/></svg></span>
+                <span class="row-opt-btn__text">E-posta Değiştir</span>
+            </button>
         </form>
         {% endif %}
         {% if is_founder or can_unit_change %}
-        <form id="dlgUnitChangeForm" method="post" action="#">
-            <button type="submit">Birim Değişikliği</button>
+        <form id="dlgUnitChangeForm" class="row-opt-form" method="post" action="#">
+            <button type="submit" class="row-opt-btn row-opt--unit">
+                <span class="row-opt-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10l8-6 8 6v10"/><path d="M9 20v-6h6v6M8 4h8"/></svg></span>
+                <span class="row-opt-btn__text">Birim Değişikliği</span>
+            </button>
+        </form>
+        {% endif %}
+        {% if is_founder or can_terminated_users %}
+        <form id="dlgSetTerminatedForm" class="row-opt-form" method="post" action="#">
+            <button type="submit" class="row-opt-btn row-opt--terminated">
+                <span class="row-opt-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg></span>
+                <span class="row-opt-btn__text">İşten Ayrıldı</span>
+            </button>
+        </form>
+        {% endif %}
+        {% if is_founder %}
+        <form id="dlgDeleteForm" class="row-opt-form" method="post" action="#" onsubmit="return confirm('Bu kullanıcı tüm verileriyle silinsin mi? Bu işlem geri alınamaz.');">
+            <button type="submit" class="row-opt-btn row-opt--delete">
+                <span class="row-opt-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6"/></svg></span>
+                <span class="row-opt-btn__text">Kullanıcı Sil</span>
+            </button>
         </form>
         {% endif %}
     </div>
