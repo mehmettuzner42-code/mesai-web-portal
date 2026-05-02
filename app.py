@@ -14,7 +14,7 @@ from email.message import EmailMessage
 from functools import wraps
 from types import SimpleNamespace
 
-from flask import Flask, flash, jsonify, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, flash, g, has_request_context, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl.cell.cell import MergedCell
 from openpyxl import Workbook, load_workbook
@@ -77,7 +77,10 @@ _DELEGATE_PERM_CACHE = {}
 _DELEGATE_PERM_CACHE_TTL_SEC = 3600
 _FOUNDER_ID_CACHE = {"value": None, "expires_at": 0.0}
 _DELEGATE_VIEW_CACHE = {}
-_DELEGATE_VIEW_CACHE_TTL_SEC = 30.0
+# Yetkili kullanici agir HTML sayfalarinda tekrar tekrar tam render maliyetini azaltir (cok islemci = kisa TTL).
+_DELEGATE_VIEW_CACHE_TTL_SEC = 180.0
+
+_RQ_USER_CACHE_UNSET = object()
 DAIRE_OPTIONS = ["Abone İşleri Dairesi Başkanlığı"]
 SUBE_OPTIONS = [
     "Sayaç İşleri Şube Müdürlüğü",
@@ -918,10 +921,22 @@ def delegate_can(user: User, capability: str) -> bool:
 
 
 def session_login_user():
+    """Oturumdaki kullaniciyi dondurur; tek istek icinde tekrarlanan User.query.get cagrilarini g ile onler."""
+    if has_request_context():
+        hit = getattr(g, "_session_login_user_hit", _RQ_USER_CACHE_UNSET)
+        if hit is not _RQ_USER_CACHE_UNSET:
+            return g._session_login_user
     uid = session.get("user_id")
     if not uid:
+        if has_request_context():
+            g._session_login_user_hit = True
+            g._session_login_user = None
         return None
-    return User.query.get(uid)
+    u = User.query.get(uid)
+    if has_request_context():
+        g._session_login_user_hit = True
+        g._session_login_user = u
+    return u
 
 
 def is_user_terminated(user_id: int) -> bool:
@@ -1097,8 +1112,16 @@ def can_bypass_period_lock(user: User) -> bool:
 
 
 def current_user():
+    """login_user + burunme; tek istekte tekrarlanan sorgulari g ile onler."""
+    if has_request_context():
+        hit = getattr(g, "_current_user_hit", _RQ_USER_CACHE_UNSET)
+        if hit is not _RQ_USER_CACHE_UNSET:
+            return g._current_user
     login_user = session_login_user()
     if login_user is None:
+        if has_request_context():
+            g._current_user_hit = True
+            g._current_user = None
         return None
     # Kurucu kullanici "kullaniciya burunme" modunda ise ekrandaki tum veriler secilen kisiye gore akar.
     if can_access_admin_area(login_user):
@@ -1108,8 +1131,14 @@ def current_user():
             if imp_user:
                 allowed = allowed_user_ids_for(login_user)
                 if allowed is None or imp_user.id in allowed:
+                    if has_request_context():
+                        g._current_user_hit = True
+                        g._current_user = imp_user
                     return imp_user
                 session.pop("admin_impersonate_user_id", None)
+    if has_request_context():
+        g._current_user_hit = True
+        g._current_user = login_user
     return login_user
 
 
