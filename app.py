@@ -2647,6 +2647,10 @@ def admin_users_charts_export_xlsx():
     _set_first_chart_title(ws4, title_bayram)
     _sync_chart_series_to_data(ws4, lr4)
 
+    # Kayıt öncesi tekrar: tüm kenar + üstbilgi/alttaki 0,5 cm (şablonda sıfır XML değeri Excel'de yanıltıcı olabiliyor).
+    for _pw in (base_ws, ws2, ws3, ws4):
+        _apply_excel_print_margins_center(_pw)
+
     mem = io.BytesIO()
     wb.save(mem)
     mem.seek(0)
