@@ -2386,7 +2386,8 @@ def admin_users_charts_export_xlsx():
         return redirect(url_for("admin_users"))
     allowed_ids = allowed_user_ids_for(login_user)
     selected_user_ids = {int(v) for v in request.form.getlist("selected_user_ids") if str(v).isdigit()}
-    selection_applied = request.form.get("selection_applied") == "1"
+    selected_daire = request.form.get("daire", "").strip()
+    selected_sube = request.form.get("sube", "").strip()
 
     date_range_query = db.session.query(db.func.min(OvertimeEntry.work_date), db.func.max(OvertimeEntry.work_date))
     if allowed_ids is not None:
@@ -2416,12 +2417,26 @@ def admin_users_charts_export_xlsx():
     users = users_query.all() if allowed_ids is None else users_query.filter(User.id.in_(list(allowed_ids) or [0])).all()
     if selected_user_ids:
         users = [u for u in users if u.id in selected_user_ids]
-    elif selection_applied:
-        users = []
+    # Hiç tik yoksa: seçilen yıl/dönem + daire/şube süzgecine uyan tüm yetkili kullanıcılar rapora girer.
     profiles = {
         p.user_id: p
         for p in UserProfile.query.filter(UserProfile.user_id.in_([u.id for u in users] or [0])).all()
     }
+    if selected_daire or selected_sube:
+        users = [
+            u
+            for u in users
+            if (
+                (
+                    not selected_daire
+                    or ((profiles.get(u.id) or UserProfile(user_id=u.id)).daire_baskanligi or "").strip() == selected_daire
+                )
+                and (
+                    not selected_sube
+                    or ((profiles.get(u.id) or UserProfile(user_id=u.id)).sube_mudurlugu or "").strip() == selected_sube
+                )
+            )
+        ]
     candidate_ids = [u.id for u in users]
     delegate_perm = None if is_founder_user(login_user) else get_delegate_permission(login_user.id if login_user else 0)
     need_unit_scope = bool(delegate_perm and ((delegate_perm.scope_daire_baskanligi or "").strip() or (delegate_perm.scope_sube_mudurlugu or "").strip()))
@@ -2536,46 +2551,65 @@ def admin_users_charts_export_xlsx():
     rows_year_pazar = sorted(rows, key=lambda x: float(x["year"].get("pazar", 0) or 0), reverse=True)
     rows_year_bayram = sorted(rows, key=lambda x: float(x["year"].get("bayram", 0) or 0), reverse=True)
 
+    user_count = len(rows)
+    meta_parts = [str(int(selected_year)), f"{user_count} kişi"]
+    if selected_daire:
+        meta_parts.append(selected_daire)
+    if selected_sube:
+        meta_parts.append(selected_sube)
+    meta = " · ".join(meta_parts)
+    title_period = f"Dönem (%60) {format_dmy(p_start)} - {format_dmy(p_end)} - {meta}"
+    title_year = f"Yıl (%60) - {meta}"
+    title_pazar = f"Pazar mesaisi (yıl) - {meta}"
+    title_bayram = f"Bayram mesaisi (yıl) - {meta}"
+
+    def _set_first_chart_title(ws, text: str) -> None:
+        """Seri aralığı / yazdırma alanı / renklere dokunmadan yalnızca grafik başlığı metnini günceller."""
+        chs = getattr(ws, "_charts", None) or []
+        if not chs or not (text or "").strip():
+            return
+        try:
+            chs[0].title = text.strip()
+        except Exception:
+            pass
+
     template_path = os.path.join(os.path.dirname(__file__), "grafik.xlsx")
+    # Grafik/yazdırma alanı, renk ve yazı tipi: openpyxl grafik nesnesine dokunmak veya sayfa adını
+    # değiştirmek genelde şablonu bozar. Sadece A:B veri gövdesini (satır 3+) güncelliyoruz;
+    # şablonda grafik serisi yeterince geniş aralığa (örn. $A$3:$B$500) bağlı olmalı.
     wb = load_workbook(template_path)
     base_ws = wb["grafik"]
     ws2 = wb["grafik (2)"]
     ws3 = wb["grafik (3)"]
     ws4 = wb["grafik (4)"]
-    base_ws.title = "Donem Grafigi"
-    ws2.title = "Yil Grafigi"
-    ws3.title = "Pazar Grafigi"
-    ws4.title = "Bayram Grafigi"
 
-    def fill_sheet(ws, title, data_rows, value_getter):
-        # Şablondaki grafik/yazdırma alanını bozmamak için
-        # sadece veri hücrelerini güncelliyoruz.
-        ws["A2"] = "Ad Soyad"
-        ws["B2"] = "Deger"
-        # Önce eski verileri temizle.
-        for rr in range(3, 2000):
-            ws.cell(row=rr, column=1).value = None
-            ws.cell(row=rr, column=2).value = None
+    _DATA_COL_START = 1
+    _DATA_COL_END = 2
+    _DATA_FIRST_ROW = 3
+    _DATA_CLEAR_LAST_ROW = 2000
 
-        row_num = 3
+    def fill_sheet(ws, data_rows, value_getter):
+        """Yalnızca veri satırlarını doldurur; başlık satırı, grafik ve hücre stillerine dokunmaz."""
+        for rr in range(_DATA_FIRST_ROW, _DATA_CLEAR_LAST_ROW + 1):
+            c1 = ws.cell(row=rr, column=_DATA_COL_START)
+            c2 = ws.cell(row=rr, column=_DATA_COL_END)
+            c1.value = None
+            c2.value = None
+
+        row_num = _DATA_FIRST_ROW
         for r in data_rows:
-            ws.cell(row=row_num, column=1).value = r["name"]
-            ws.cell(row=row_num, column=2).value = float(value_getter(r))
+            ws.cell(row=row_num, column=_DATA_COL_START).value = r["name"]
+            ws.cell(row=row_num, column=_DATA_COL_END).value = float(value_getter(r))
             row_num += 1
-        last_row = max(3, row_num - 1)
-        if ws._charts:
-            chart = ws._charts[0]
-            chart.title = title
-            if chart.series:
-                series = chart.series[0]
-                series.val.numRef.f = f"'{ws.title}'!$B$3:$B${last_row}"
-                if series.cat and getattr(series.cat, "strRef", None):
-                    series.cat.strRef.f = f"'{ws.title}'!$A$3:$A${last_row}"
 
-    fill_sheet(base_ws, f"Donem Grafigi ({format_dmy(p_start)} - {format_dmy(p_end)})", rows_period, lambda r: r["period_hours"])
-    fill_sheet(ws2, f"Yil Grafigi ({selected_year})", rows_year, lambda r: r["year_hours"])
-    fill_sheet(ws3, f"Pazar Grafigi ({selected_year})", rows_year_pazar, lambda r: float(r["year"].get("pazar", 0) or 0))
-    fill_sheet(ws4, f"Bayram Grafigi ({selected_year})", rows_year_bayram, lambda r: float(r["year"].get("bayram", 0) or 0))
+    fill_sheet(base_ws, rows_period, lambda r: r["period_hours"])
+    _set_first_chart_title(base_ws, title_period)
+    fill_sheet(ws2, rows_year, lambda r: r["year_hours"])
+    _set_first_chart_title(ws2, title_year)
+    fill_sheet(ws3, rows_year_pazar, lambda r: float(r["year"].get("pazar", 0) or 0))
+    _set_first_chart_title(ws3, title_pazar)
+    fill_sheet(ws4, rows_year_bayram, lambda r: float(r["year"].get("bayram", 0) or 0))
+    _set_first_chart_title(ws4, title_bayram)
 
     mem = io.BytesIO()
     wb.save(mem)
