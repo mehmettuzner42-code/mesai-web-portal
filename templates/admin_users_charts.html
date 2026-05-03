@@ -1,5 +1,39 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="charts-screen">
+<style>
+@media print {
+    @page {
+        margin: 0;
+        size: auto;
+    }
+    html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #fff !important;
+    }
+    body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    header.topbar {
+        display: none !important;
+    }
+    main.container {
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .charts-screen .alert {
+        display: none !important;
+    }
+    .charts-screen .compare-label {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+    }
+}
+</style>
 <div class="header-row">
     <h2>Tüm Kullanıcı Mesai Karşılaştırması</h2>
 </div>
@@ -94,6 +128,7 @@
             </label>
             <button type="submit">Grafiği Güncelle</button>
             <button type="button" class="success-btn" id="chartsExportBtn">Excele Aktar</button>
+            <span style="color:#64748b;font-size:13px;max-width:420px;">İşaretli kullanıcılar rapora girer; hiç tik yoksa yıl, dönem ve daire/şube süzgeciyle eşleşen herkes. Excel’de grafik başlığı rapora göre güncellenir; şablon stili ve yazdırma alanı korunur.</span>
         </div>
     </form>
     <form method="post" action="{{ url_for('admin_users_charts_export_xlsx') }}" id="chartsExportForm" style="display:none;">
@@ -407,4 +442,5 @@
     });
 })();
 </script>
+</div>
 {% endblock %}

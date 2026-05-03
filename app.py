@@ -2564,7 +2564,7 @@ def admin_users_charts_export_xlsx():
     title_bayram = f"Bayram mesaisi (yıl) - {meta}"
 
     def _set_first_chart_title(ws, text: str) -> None:
-        """Seri aralığı / yazdırma alanı / renklere dokunmadan yalnızca grafik başlığı metnini günceller."""
+        """Yalnızca grafik başlığı metnini günceller."""
         chs = getattr(ws, "_charts", None) or []
         if not chs or not (text or "").strip():
             return
@@ -2573,10 +2573,23 @@ def admin_users_charts_export_xlsx():
         except Exception:
             pass
 
+    def _sync_chart_series_to_data(ws, last_data_row: int) -> None:
+        """Şablondaki sabit kısa aralık yüzünden eksik çubuk kalmasın: seriyi A3:B(last) ile hizala (renk/stil aynı)."""
+        chs = getattr(ws, "_charts", None) or []
+        if not chs or last_data_row < 3:
+            return
+        st = (ws.title or "Sheet1").replace("'", "''")
+        rng_a = f"'{st}'!$A$3:$A${last_data_row}"
+        rng_b = f"'{st}'!$B$3:$B${last_data_row}"
+        try:
+            ser = chs[0].series[0]
+            ser.val.numRef.f = rng_b
+            if ser.cat and getattr(ser.cat, "strRef", None) is not None:
+                ser.cat.strRef.f = rng_a
+        except Exception:
+            pass
+
     template_path = os.path.join(os.path.dirname(__file__), "grafik.xlsx")
-    # Grafik/yazdırma alanı, renk ve yazı tipi: openpyxl grafik nesnesine dokunmak veya sayfa adını
-    # değiştirmek genelde şablonu bozar. Sadece A:B veri gövdesini (satır 3+) güncelliyoruz;
-    # şablonda grafik serisi yeterince geniş aralığa (örn. $A$3:$B$500) bağlı olmalı.
     wb = load_workbook(template_path)
     base_ws = wb["grafik"]
     ws2 = wb["grafik (2)"]
@@ -2589,7 +2602,7 @@ def admin_users_charts_export_xlsx():
     _DATA_CLEAR_LAST_ROW = 2000
 
     def fill_sheet(ws, data_rows, value_getter):
-        """Yalnızca veri satırlarını doldurur; başlık satırı, grafik ve hücre stillerine dokunmaz."""
+        """Yalnızca veri satırlarını doldurur; başlık satırı ve hücre stillerine dokunmaz."""
         for rr in range(_DATA_FIRST_ROW, _DATA_CLEAR_LAST_ROW + 1):
             c1 = ws.cell(row=rr, column=_DATA_COL_START)
             c2 = ws.cell(row=rr, column=_DATA_COL_END)
@@ -2601,15 +2614,20 @@ def admin_users_charts_export_xlsx():
             ws.cell(row=row_num, column=_DATA_COL_START).value = r["name"]
             ws.cell(row=row_num, column=_DATA_COL_END).value = float(value_getter(r))
             row_num += 1
+        return max(_DATA_FIRST_ROW, row_num - 1)
 
-    fill_sheet(base_ws, rows_period, lambda r: r["period_hours"])
+    lr1 = fill_sheet(base_ws, rows_period, lambda r: r["period_hours"])
     _set_first_chart_title(base_ws, title_period)
-    fill_sheet(ws2, rows_year, lambda r: r["year_hours"])
+    _sync_chart_series_to_data(base_ws, lr1)
+    lr2 = fill_sheet(ws2, rows_year, lambda r: r["year_hours"])
     _set_first_chart_title(ws2, title_year)
-    fill_sheet(ws3, rows_year_pazar, lambda r: float(r["year"].get("pazar", 0) or 0))
+    _sync_chart_series_to_data(ws2, lr2)
+    lr3 = fill_sheet(ws3, rows_year_pazar, lambda r: float(r["year"].get("pazar", 0) or 0))
     _set_first_chart_title(ws3, title_pazar)
-    fill_sheet(ws4, rows_year_bayram, lambda r: float(r["year"].get("bayram", 0) or 0))
+    _sync_chart_series_to_data(ws3, lr3)
+    lr4 = fill_sheet(ws4, rows_year_bayram, lambda r: float(r["year"].get("bayram", 0) or 0))
     _set_first_chart_title(ws4, title_bayram)
+    _sync_chart_series_to_data(ws4, lr4)
 
     mem = io.BytesIO()
     wb.save(mem)
