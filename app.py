@@ -19,6 +19,7 @@ from flask_sqlalchemy import SQLAlchemy
 from openpyxl.cell.cell import MergedCell
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import PatternFill
+from openpyxl.worksheet.page import PageMargins
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from werkzeug.security import check_password_hash, generate_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -2595,6 +2596,23 @@ def admin_users_charts_export_xlsx():
     ws2 = wb["grafik (2)"]
     ws3 = wb["grafik (3)"]
     ws4 = wb["grafik (4)"]
+
+    def _apply_excel_print_margins_center(ws):
+        """Excel Sayfa Yapısı > Kenar Boşlukları: üst/alt/sol/sağ ve üstbilgi/alttaki 0,5 cm; sayfada yatay+dikey ortala."""
+        m_in = 0.5 / 2.54  # 0,5 cm -> inç (OOXML)
+        ws.page_margins = PageMargins(
+            left=m_in,
+            right=m_in,
+            top=m_in,
+            bottom=m_in,
+            header=m_in,
+            footer=m_in,
+        )
+        ws.print_options.horizontalCentered = True
+        ws.print_options.verticalCentered = True
+
+    for _pw in (base_ws, ws2, ws3, ws4):
+        _apply_excel_print_margins_center(_pw)
 
     _DATA_COL_START = 1
     _DATA_COL_END = 2
