@@ -40,6 +40,11 @@
         overflow: visible;
         text-overflow: clip;
     }
+    /* Yıl grafiği: yatay aynı, dikey orantılı küçültme JS (beforeprint) ile; burada sadece kök */
+    .charts-card-year .charts-year-print-inner {
+        width: 100%;
+        transform-origin: top center;
+    }
 }
 </style>
 <div class="header-row">
@@ -165,7 +170,8 @@
     </div>
 </div>
 
-<div class="card">
+<div class="card charts-card-year">
+    <div class="charts-year-print-inner">
     <h3>Yıl Grafiği ({{ selected_year }})</h3>
     <p>Karşılaştırma metriği: sadece %60 mesai saati</p>
     <div class="compare-chart">
@@ -182,6 +188,7 @@
         {% else %}
         <p>Kayıtlı kullanıcı yok.</p>
         {% endfor %}
+    </div>
     </div>
 </div>
 
@@ -447,6 +454,47 @@
         });
         exportForm.submit();
     });
+
+    (function yearChartPrintFit() {
+        const card = document.querySelector(".charts-card-year");
+        const inner = card && card.querySelector(".charts-year-print-inner");
+        if (!inner) return;
+
+        function clearYearPrintScale() {
+            inner.style.transform = "";
+            inner.style.marginBottom = "";
+            inner.style.transformOrigin = "";
+        }
+
+        function applyYearPrintScale() {
+            clearYearPrintScale();
+            void inner.offsetHeight;
+            const h = inner.getBoundingClientRect().height;
+            if (h < 8) return;
+
+            /* A4 dikey: ~297mm; @page 0,5cm üst+alt ≈ 10mm yazdırılabilir yükseklik */
+            const printableMm = 297 - 10;
+            const printablePx = (printableMm / 25.4) * 96;
+
+            let above = 0;
+            for (let n = card.previousElementSibling; n; n = n.previousElementSibling) {
+                above += n.offsetHeight || 0;
+            }
+            if (above > printablePx * 0.92) {
+                above = 0;
+            }
+            const available = Math.max(280, printablePx - above - 16);
+            const scale = Math.max(0.38, Math.min(1, available / h));
+            if (scale >= 0.999) return;
+
+            inner.style.transformOrigin = "top center";
+            inner.style.transform = "scale(1, " + scale + ")";
+            inner.style.marginBottom = h * (scale - 1) + "px";
+        }
+
+        window.addEventListener("beforeprint", applyYearPrintScale);
+        window.addEventListener("afterprint", clearYearPrintScale);
+    })();
 })();
 </script>
 </div>
