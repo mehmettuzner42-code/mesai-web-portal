@@ -3,11 +3,13 @@ import glob
 import io
 import json
 import os
+import re
 import secrets
 import smtplib
 import threading
 import time
 import urllib.error
+import zipfile
 import urllib.request
 from datetime import date, datetime, timedelta
 from email.message import EmailMessage
@@ -2377,6 +2379,40 @@ def admin_users_charts():
     return html
 
 
+_PAGE_MARGIN_HALF_CM_RE = re.compile(r"<pageMargins\b[^>]*/>", re.IGNORECASE)
+
+
+def _xlsx_patch_worksheets_page_margins_half_cm(data: bytes) -> bytes:
+    """Zip içindeki OOXML sayfalarında kenar boşluklarını 0,5 cm (inç) olarak yazar.
+
+    openpyxl çoğu zaman doğru yazar; bazı Excel sürümleri açılışta 'Normal' önayarına kayabiliyor.
+    Paket düzeyinde sabitlemek şablon + dışa aktarma sonrası Ctrl+P ile uyumu güçlendirir.
+    """
+    inch = 0.5 / 2.54
+    s = f"{inch:.14f}".rstrip("0").rstrip(".")
+    tag = (
+        f'<pageMargins left="{s}" right="{s}" top="{s}" bottom="{s}" '
+        f'header="{s}" footer="{s}" />'
+    )
+    out = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(data), "r") as zin, zipfile.ZipFile(
+        out, "w", compression=zipfile.ZIP_DEFLATED
+    ) as zout:
+        for info in zin.infolist():
+            chunk = zin.read(info.filename)
+            if info.filename.startswith("xl/worksheets/") and info.filename.endswith(".xml"):
+                text = chunk.decode("utf-8")
+                if _PAGE_MARGIN_HALF_CM_RE.search(text):
+                    text = _PAGE_MARGIN_HALF_CM_RE.sub(tag, text, count=1)
+                elif "<pageSetup" in text:
+                    text = text.replace("<pageSetup", tag + "<pageSetup", 1)
+                elif "</worksheet>" in text:
+                    text = text.replace("</worksheet>", tag + "</worksheet>", 1)
+                chunk = text.encode("utf-8")
+            zout.writestr(info, chunk)
+    return out.getvalue()
+
+
 @app.post("/admin/users/charts/export.xlsx")
 @login_required
 @admin_or_delegate_required
@@ -2610,6 +2646,11 @@ def admin_users_charts_export_xlsx():
         )
         ws.print_options.horizontalCentered = True
         ws.print_options.verticalCentered = True
+        ps = ws.page_setup
+        if ps.paperSize is None:
+            ps.paperSize = 9  # A4 (OOXML); yazdırmada tutarlı kağıt boyutu
+        if ps.scale is None:
+            ps.scale = 100
 
     for _pw in (base_ws, ws2, ws3, ws4):
         _apply_excel_print_margins_center(_pw)
@@ -2653,9 +2694,9 @@ def admin_users_charts_export_xlsx():
 
     mem = io.BytesIO()
     wb.save(mem)
-    mem.seek(0)
+    patched = _xlsx_patch_worksheets_page_margins_half_cm(mem.getvalue())
     return send_file(
-        mem,
+        io.BytesIO(patched),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         as_attachment=True,
         download_name=f"Grafik_Raporu_{selected_year}_{active_start[0]:04d}-{active_start[1]:02d}.xlsx",
