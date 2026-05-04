@@ -525,19 +525,6 @@
             if (e <= s) e += 1440;
             return (e - s) / 60.0;
         }
-        function calcLunch1213(startH, endH) {
-            let s = hhmmToMin(startH);
-            let e = hhmmToMin(endH);
-            if (s == null || e == null) return 0;
-            if (e <= s) e += 1440;
-            let total = 0;
-            const maxDay = Math.floor(e / 1440) + 1;
-            for (let k = 0; k < maxDay + 2; k++) {
-                const d0 = k * 1440;
-                total += overlap(s, e, d0 + 12 * 60, d0 + 13 * 60);
-            }
-            return total / 60.0;
-        }
         function calcLunch1230(startH, endH) {
             let s = hhmmToMin(startH);
             let e = hhmmToMin(endH);
@@ -584,90 +571,108 @@
             }
             return bestEnd;
         }
+        function calcNight2006(startH, endH) {
+            let s = hhmmToMin(startH);
+            let e = hhmmToMin(endH);
+            if (s == null || e == null) return 0;
+            if (e <= s) e += 1440;
+            let total = 0;
+            const maxDay = Math.floor(e / 1440) + 1;
+            for (let k = 0; k < maxDay + 2; k++) {
+                const d0 = k * 1440;
+                total += overlap(s, e, d0, d0 + 6 * 60);
+                total += overlap(s, e, d0 + 20 * 60, d0 + 24 * 60);
+            }
+            return total / 60.0;
+        }
+        function computeMesaiSplitJS(start, end, wd, meta) {
+            const isHol = !!meta.hol;
+            const isHalf = !!meta.halfHol;
+            const T8 = 8 * 60, T13 = 13 * 60, T16 = 16 * 60, T17 = 17 * 60, T20 = 20 * 60;
+            const sm = hhmmToMin(start);
+            const em = hhmmToMin(end);
+            if (sm == null || em == null) return { pct60: 0, pct15: 0, pazar: 0, bayram: 0 };
+            let eAdj = em;
+            if (eAdj <= sm) eAdj += 1440;
+            const G = (eAdj - sm) / 60;
+            let lunch1230 = 0;
+            const maxD = Math.floor(eAdj / 1440) + 1;
+            for (let k = 0; k < maxD + 2; k++) {
+                const d0 = k * 1440;
+                lunch1230 += overlap(sm, eAdj, d0 + 12 * 60 + 30, d0 + 13 * 60 + 30);
+            }
+            lunch1230 /= 60;
+            const net = Math.max(0, G - lunch1230);
+            const night = calcNight2006(start, end);
+            const crosses = em <= sm;
+            function extraFrom17(endH) {
+                const tot = calcTotalHours("17:00", endH) || 0;
+                const l = calcLunch1230("17:00", endH) || 0;
+                return Math.max(0, tot - l);
+            }
+            function irregularFullP60() {
+                if (crosses) return net;
+                const ecap = Math.min(em, T20);
+                if (ecap <= sm) return 0;
+                const tot = (ecap - sm) / 60;
+                const endC = `${String(Math.floor(ecap / 60)).padStart(2, "0")}:${String(ecap % 60).padStart(2, "0")}`;
+                const l = calcLunch1230(start, endC) || 0;
+                return Math.max(0, tot - l);
+            }
+            if (isHol) {
+                if (crosses) return { pct60: net, pct15: night, pazar: 0, bayram: 0 };
+                if (isHalf) {
+                    if (sm !== T13) return { pct60: net, pct15: night, pazar: 0, bayram: 0 };
+                    if (em > T17) return { pct60: extraFrom17(end), pct15: night, pazar: 0, bayram: 0.5 };
+                    return { pct60: 0, pct15: night, pazar: 0, bayram: 0.5 };
+                }
+                if (em <= T16) return { pct60: net, pct15: night, pazar: 0, bayram: 0 };
+                if (sm === T8 && em > T17) return { pct60: extraFrom17(end), pct15: night, pazar: 0, bayram: 1 };
+                if (sm === T8 && em === T17) return { pct60: 0, pct15: night, pazar: 0, bayram: 1 };
+                if (sm === T8 && em > T16 && em < T17) return { pct60: net, pct15: night, pazar: 0, bayram: 0 };
+                return { pct60: irregularFullP60(), pct15: night, pazar: 0, bayram: 0 };
+            }
+            if (wd === 6) {
+                if (crosses) return { pct60: net, pct15: night, pazar: 0, bayram: 0 };
+                if (em <= T16) return { pct60: net, pct15: night, pazar: 0, bayram: 0 };
+                if (sm === T8 && em > T17) return { pct60: extraFrom17(end), pct15: night, pazar: 1, bayram: 0 };
+                if (sm === T8 && em === T17) return { pct60: 0, pct15: night, pazar: 1, bayram: 0 };
+                if (sm === T8 && em > T16 && em < T17) return { pct60: net, pct15: night, pazar: 0, bayram: 0 };
+                return { pct60: irregularFullP60(), pct15: night, pazar: 0, bayram: 0 };
+            }
+            if (wd === 5) {
+                const lunchSat = calcLunch1230(start, end) || 0;
+                return { pct60: Math.max(0, G - lunchSat), pct15: night, pazar: 0, bayram: 0 };
+            }
+            return { pct60: Math.max(0, G - lunch1230), pct15: night, pazar: 0, bayram: 0 };
+        }
         function dayDefaultsCalc(meta, endUse) {
             const wd = meta.wd;
             const isHoliday = meta.hol;
             const isHalfHoliday = meta.halfHol;
             let start;
             let end0;
-            let default_bayram;
-            let pazar0;
-            let bayram0;
             if (isHoliday) {
                 if (isHalfHoliday) {
                     start = "13:00";
                     end0 = "17:00";
-                    default_bayram = 0.5;
                 } else {
                     start = "08:00";
                     end0 = "17:00";
-                    default_bayram = 1.0;
                 }
-                pazar0 = 0;
-                bayram0 = 0;
             } else if (wd === 6) {
                 start = "08:00";
                 end0 = "17:00";
-                pazar0 = 1.0;
-                bayram0 = 0.0;
             } else if (wd === 5) {
                 start = "08:00";
                 end0 = "18:00";
-                pazar0 = 0.0;
-                bayram0 = 0.0;
             } else {
                 start = "18:00";
                 end0 = "21:00";
-                pazar0 = 0.0;
-                bayram0 = 0.0;
             }
             const end = endUse != null ? endUse : end0;
-            const total = calcTotalHours(start, end) || 0;
-            const lunch = calcLunch1213(start, end) || 0;
-            const net = Math.max(0, total - lunch);
-            let pct60;
-            let pazar = pazar0;
-            let bayram = bayram0;
-            if (isHoliday) {
-                const holidayLunch = calcLunch1230(start, end) || 0;
-                const holidayNet = Math.max(0, total - holidayLunch);
-                const sm = hhmmToMin(start);
-                const em = hhmmToMin(end);
-                const crosses = sm != null && em != null && em <= sm;
-                if (!crosses && em != null && em <= 16 * 60) {
-                    pct60 = holidayNet;
-                    pazar = 0;
-                    bayram = 0;
-                } else {
-                    const baseTotal = calcTotalHours(start, "17:00") || 0;
-                    const baseLunch = calcLunch1230(start, "17:00") || 0;
-                    const baseNet = Math.max(0, baseTotal - baseLunch);
-                    pct60 = Math.max(0, holidayNet - baseNet);
-                    pazar = 0;
-                    bayram = default_bayram;
-                }
-            } else if (wd === 6) {
-                if (net < 7.0) {
-                    pct60 = net;
-                    pazar = 0;
-                    bayram = 0;
-                } else {
-                    pct60 = Math.max(0, net - 8.0);
-                    if (isHoliday) {
-                        pazar = 0;
-                        bayram = 1.0;
-                    } else {
-                        pazar = 1.0;
-                        bayram = 0.0;
-                    }
-                }
-            } else if (wd === 5) {
-                const lunchSat = calcLunch1230(start, end) || 0;
-                pct60 = Math.max(0, total - lunchSat);
-            } else {
-                pct60 = total;
-            }
-            return { pct60, pazar, bayram };
+            const o = computeMesaiSplitJS(start, end, wd, meta);
+            return { pct60: o.pct60, pazar: o.pazar, bayram: o.bayram };
         }
         function bulkCellContribution(meta, raw) {
             const raw0 = String(raw || "")

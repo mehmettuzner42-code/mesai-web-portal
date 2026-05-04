@@ -73,7 +73,7 @@ function recalcFrom60() {
             const endMin = sMin + Math.round((h + breakH) * 60);
             const endHhmm = minutesToHhmm(endMin);
             document.getElementById("end_time").value = endHhmm;
-            fetch(`/api/day-defaults?date=${encodeURIComponent(d)}&endTime=${encodeURIComponent(endHhmm)}`)
+            fetch(`/api/day-defaults?date=${encodeURIComponent(d)}&endTime=${encodeURIComponent(endHhmm)}&startTime=${encodeURIComponent(start || "")}`)
                 .then(r2 => r2.json())
                 .then(v2 => {
                     document.getElementById("pct15").value = formatOut(v2.pct15);
@@ -88,7 +88,8 @@ function recalcFromEndTime() {
     const d = document.getElementById("work_date").value;
     const end = document.getElementById("end_time").value;
     if (!d || !end) return;
-    fetch(`/api/day-defaults?date=${encodeURIComponent(d)}&endTime=${encodeURIComponent(end)}`)
+    const st = document.getElementById("start_time").value;
+    fetch(`/api/day-defaults?date=${encodeURIComponent(d)}&endTime=${encodeURIComponent(end)}&startTime=${encodeURIComponent(st || "")}`)
         .then(r => r.json())
         .then(v => {
             document.getElementById("pct60").value = formatOut(v.pct60);

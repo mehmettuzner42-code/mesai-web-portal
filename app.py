@@ -296,6 +296,102 @@ def calc_lunch_1230_1330(start_hhmm: str, end_hhmm: str):
     return total / 60.0
 
 
+def _minutes_to_hhmm(m: int) -> str:
+    m = ((int(m) % 1440) + 1440) % 1440
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def compute_mesai_split(start: str, end: str, wd: int, holiday_kind):
+    """Başlama/bitiş ve güne göre %60, %15, pazar, bayram (tatil/pazar/cumartesi/hafta içi kuralları)."""
+    start = (start or "").strip()
+    end = (end or "").strip()
+    hk = (holiday_kind or "").strip().lower() or None
+    if hk not in (None, "half", "full"):
+        hk = None
+    is_half = hk == "half"
+    is_full = hk == "full"
+    is_holiday = is_half or is_full
+
+    sm = hhmm_to_minutes(start)
+    em = hhmm_to_minutes(end)
+    if sm is None or em is None:
+        return {"pct60": 0.0, "pct15": 0.0, "pazar": 0.0, "bayram": 0.0}
+
+    G = calc_total_hours(start, end) or 0.0
+    L1230 = calc_lunch_1230_1330(start, end) or 0.0
+    net = max(0.0, G - L1230)
+    night = calc_night_20_06(start, end) or 0.0
+    crosses = em <= sm
+
+    T8 = 8 * 60
+    T13 = 13 * 60
+    T16 = 16 * 60
+    T17 = 17 * 60
+    T20 = 20 * 60
+
+    def pack(p60, p15, pz, br):
+        return {
+            "pct60": float(p60),
+            "pct15": float(p15),
+            "pazar": float(pz),
+            "bayram": float(br),
+        }
+
+    def extra_from_17_to(end_hhmm: str) -> float:
+        return max(
+            0.0,
+            (calc_total_hours("17:00", end_hhmm) or 0.0) - (calc_lunch_1230_1330("17:00", end_hhmm) or 0.0),
+        )
+
+    def irregular_full_or_sunday_pct60() -> float:
+        if crosses:
+            return net
+        ecap = min(em, T20)
+        if ecap <= sm:
+            return 0.0
+        end_c = _minutes_to_hhmm(ecap)
+        tot = (ecap - sm) / 60.0
+        lsub = calc_lunch_1230_1330(start, end_c) or 0.0
+        return max(0.0, tot - lsub)
+
+    if is_holiday:
+        if crosses:
+            return pack(net, night, 0.0, 0.0)
+        if is_half:
+            if sm != T13:
+                return pack(net, night, 0.0, 0.0)
+            if em > T17:
+                return pack(extra_from_17_to(end), night, 0.0, 0.5)
+            return pack(0.0, night, 0.0, 0.5)
+        # tam gün resmi tatil
+        if em <= T16:
+            return pack(net, night, 0.0, 0.0)
+        if sm == T8 and em > T17:
+            return pack(extra_from_17_to(end), night, 0.0, 1.0)
+        if sm == T8 and em == T17:
+            return pack(0.0, night, 0.0, 1.0)
+        if sm == T8 and T16 < em < T17:
+            return pack(net, night, 0.0, 0.0)
+        return pack(irregular_full_or_sunday_pct60(), night, 0.0, 0.0)
+
+    if wd == 6:
+        if crosses:
+            return pack(net, night, 0.0, 0.0)
+        if em <= T16:
+            return pack(net, night, 0.0, 0.0)
+        if sm == T8 and em > T17:
+            return pack(extra_from_17_to(end), night, 1.0, 0.0)
+        if sm == T8 and em == T17:
+            return pack(0.0, night, 1.0, 0.0)
+        if sm == T8 and T16 < em < T17:
+            return pack(net, night, 0.0, 0.0)
+        return pack(irregular_full_or_sunday_pct60(), night, 0.0, 0.0)
+
+    if wd == 5:
+        return pack(max(0.0, G - L1230), night, 0.0, 0.0)
+    return pack(max(0.0, G - L1230), night, 0.0, 0.0)
+
+
 def add_hours_hhmm(hhmm: str, hours: float) -> str:
     base = hhmm_to_minutes(hhmm)
     if base is None:
@@ -623,7 +719,7 @@ def holiday_kind_tr(target_date: date):
     return None
 
 
-def day_defaults(target_date: date, end_time_override: str = None):
+def day_defaults(target_date: date, end_time_override: str = None, start_time_override: str = None):
     wd = target_date.weekday()  # 0 pazartesi ... 6 pazar
     kind = holiday_kind_tr(target_date)
     is_half_holiday = kind == "half"
@@ -631,75 +727,25 @@ def day_defaults(target_date: date, end_time_override: str = None):
     is_holiday = is_full_holiday or is_half_holiday
 
     if is_holiday:
-        if is_half_holiday:
-            start, end = "13:00", "17:00"
-            default_bayram = 0.5
-        else:
-            start, end = "08:00", "17:00"
-            default_bayram = 1.0
-        pazar, bayram = 0.0, 0.0
-    elif wd == 6:  # pazar
-        start, end = "08:00", "17:00"
-        pazar, bayram = 1.0, 0.0
-    elif wd == 5:  # cumartesi
-        start, end = "08:00", "18:00"
-        pazar, bayram = 0.0, 0.0
-    else:  # akşam mesaisi
-        start, end = "18:00", "21:00"
-        pazar, bayram = 0.0, 0.0
-
-    if end_time_override:
-        end = end_time_override
-    total = calc_total_hours(start, end) or 0.0
-    night = calc_night_20_06(start, end) or 0.0
-    lunch = calc_lunch_12_13(start, end) or 0.0
-    net = max(0.0, total - lunch)
-    if is_holiday:
-        # Resmi tatilde (yarım/tam gün):
-        # - 16:00'dan önce bitişte bayram yazılmaz, net süre %60 olur.
-        # - 16:00 ve sonrasında bayram (0,5/1) yazılır, 17:00 sonrası saatler %60'a eklenir.
-        holiday_lunch = calc_lunch_1230_1330(start, end) or 0.0
-        holiday_net = max(0.0, total - holiday_lunch)
-        start_minutes = hhmm_to_minutes(start)
-        end_minutes = hhmm_to_minutes(end)
-        crosses_midnight = (
-            start_minutes is not None and end_minutes is not None and end_minutes <= start_minutes
-        )
-        if (not crosses_midnight) and end_minutes is not None and end_minutes <= (16 * 60):
-            pct60 = holiday_net
-            pazar, bayram = 0.0, 0.0
-        else:
-            base_total = calc_total_hours(start, "17:00") or 0.0
-            base_lunch = calc_lunch_1230_1330(start, "17:00") or 0.0
-            base_net = max(0.0, base_total - base_lunch)
-            pct60 = max(0.0, holiday_net - base_net)
-            pazar, bayram = 0.0, default_bayram
+        def_start, def_end = ("13:00", "17:00") if is_half_holiday else ("08:00", "17:00")
     elif wd == 6:
-        # Pazar/Bayramda 8 saatten az (ogle arasi dusulmus) calisma %60'a yazilir.
-        # 8 saat ve ustunde 1 gun pazar/bayram + 8 saat uzeri %60 olur.
-        if net < 7.0:
-            pct60 = net
-            pazar = 0.0
-            bayram = 0.0
-        else:
-            pct60 = max(0.0, net - 8.0)
-            if is_holiday:
-                pazar, bayram = 0.0, 1.0
-            else:
-                pazar, bayram = 1.0, 0.0
+        def_start, def_end = "08:00", "17:00"
     elif wd == 5:
-        lunch_sat = calc_lunch_1230_1330(start, end) or 0.0
-        pct60 = max(0.0, total - lunch_sat)
+        def_start, def_end = "08:00", "18:00"
     else:
-        pct60 = total
+        def_start, def_end = "18:00", "21:00"
 
+    start = (start_time_override or "").strip() or def_start
+    end = (end_time_override or "").strip() or def_end
+
+    split = compute_mesai_split(start, end, wd, kind)
     return {
         "start": start,
         "end": end,
-        "pct60": pct60,
-        "pct15": night,
-        "pazar": pazar,
-        "bayram": bayram,
+        "pct60": split["pct60"],
+        "pct15": split["pct15"],
+        "pazar": split["pazar"],
+        "bayram": split["bayram"],
         "isHoliday": is_holiday,
         "isHalfHoliday": is_half_holiday,
         "weekday": wd,
@@ -1695,21 +1741,21 @@ def admin_users_bulk_entry():
                         extra_hours = float(right)
                     except Exception:
                         continue
-                    if extra_hours < 0:
+                    if extra_hours < 0 or base_val not in (1.0, 0.5):
                         continue
-                    if base_val in (1.0, 0.5):
-                        # Ozel gunlerde 1/0.5 + X => temel mesai 17:00'a kadar tamamlanmis,
-                        # +X kismi 17:00'dan sonra devam eder.
-                        base_end = str(defaults.get("end") or "17:00")
-                        end = add_hours_hhmm(base_end, extra_hours)
-                        pct60 = float(extra_hours)
-                        pct15 = float(calc_night_20_06(start, end) or 0.0)
-                        if bool(defaults.get("isHoliday")):
-                            bayram = float(base_val)
-                        else:
-                            pazar = float(base_val)
+                    base_end = str(defaults.get("end") or "17:00")
+                    end = add_hours_hhmm(base_end, extra_hours)
+                    sp_b = compute_mesai_split(start, end, d.weekday(), holiday_kind_tr(d))
+                    pct60 = float(sp_b.get("pct60", 0) or 0)
+                    pct15 = float(sp_b.get("pct15", 0) or 0)
+                    pazar = float(sp_b.get("pazar", 0) or 0)
+                    bayram = float(sp_b.get("bayram", 0) or 0)
+                    if bool(defaults.get("isHoliday")):
+                        bayram = float(base_val)
+                        pazar = 0.0
                     else:
-                        continue
+                        pazar = float(base_val)
+                        bayram = 0.0
                 elif is_special_day:
                     try:
                         val = float(raw)
@@ -1718,20 +1764,21 @@ def admin_users_bulk_entry():
                     if val <= 0:
                         continue
                     if val in (1.0, 0.5):
-                        if bool(defaults.get("isHoliday")):
-                            bayram = float(val)
-                        else:
-                            pazar = float(val)
-                        # Sadece 1/0.5 girildiginde temel vardiya saatlerini koru.
                         end = str(defaults.get("end") or start)
-                        pct60 = 0.0
-                        pct15 = float(calc_night_20_06(start, end) or 0.0)
                     else:
                         end = add_hours_hhmm(start, val)
-                        pct60 = float(val)
-                        pct15 = float(calc_night_20_06(start, end) or 0.0)
-                        pazar = 0.0
-                        bayram = 0.0
+                    sp_b = compute_mesai_split(start, end, d.weekday(), holiday_kind_tr(d))
+                    pct60 = float(sp_b.get("pct60", 0) or 0)
+                    pct15 = float(sp_b.get("pct15", 0) or 0)
+                    pazar = float(sp_b.get("pazar", 0) or 0)
+                    bayram = float(sp_b.get("bayram", 0) or 0)
+                    if val in (1.0, 0.5):
+                        if bool(defaults.get("isHoliday")):
+                            bayram = float(val)
+                            pazar = 0.0
+                        else:
+                            pazar = float(val)
+                            bayram = 0.0
                 else:
                     try:
                         hours = float(raw)
@@ -1739,16 +1786,13 @@ def admin_users_bulk_entry():
                         continue
                     if hours <= 0:
                         continue
-                    # Cumartesi (resmi tatil degil): hucredeki sayi = net %60 (ogle 12:30-13:30
-                    # dusulmus). Bitis bu nete gore tersine hesaplanir (or. 9 -> 18:00, 14 -> 23:00).
                     wd = d.weekday()
                     is_sat_no_holiday = wd == 5 and not bool(defaults.get("isHoliday"))
                     if is_sat_no_holiday:
                         end = end_hhmm_for_saturday_net(start, hours)
-                        calc = day_defaults(d, end)
                     else:
                         end = add_hours_hhmm(start, hours)
-                        calc = day_defaults(d, end)
+                    calc = day_defaults(d, end, start)
                     pct60 = float(calc.get("pct60", 0) or 0)
                     pct15 = float(calc.get("pct15", 0) or 0)
                     pazar = float(calc.get("pazar", 0) or 0)
@@ -3667,63 +3711,38 @@ def admin_import_period_excel():
                 continue
 
             defaults = day_defaults(work_d)
-            start = defaults["start"]
-            end = defaults["end"]
-            pct60 = 0.0
-            pct15 = 0.0
-            pazar = 0.0
-            bayram = 0.0
-            is_holiday = bool(defaults["isHoliday"])
-            is_sunday = int(defaults["weekday"]) == 6
+            start = str(defaults.get("start") or "08:00")
+            end = str(defaults.get("end") or "17:00")
 
             if kind == "P":
-                pazar = 1.0
                 entered_hours = max(0.0, float(value or 0.0))
                 if entered_hours > 0:
                     end = add_hours(start, entered_hours)
-                    # P+X/B+X durumunda X saat %60'a yazilir; %15 sadece 20:00 sonrasi.
-                    pct15 = calc_night_20_06(start, end) or 0.0
-                    pct60 = entered_hours
                 else:
-                    # Sadece P ise varsayilan saat araligi kalsin, saat yazma.
-                    end = defaults["end"]
-                    pct15 = 0.0
-                    pct60 = 0.0
+                    end = str(defaults.get("end") or end)
             elif kind == "B":
                 is_half_holiday = work_d in half_holiday_set(work_d.year)
-                # B/B+X:
-                # - yarım resmi tatilde 0,5
-                # - diğer resmi tatillerde 1
-                bayram = 0.5 if is_half_holiday else 1.0
-                entered_hours = max(0.0, float(value or 0.0))
                 if is_half_holiday:
-                    # Yarım gün resmi tatil temel saatleri.
                     start = "13:00"
                     end = "17:00"
+                entered_hours = max(0.0, float(value or 0.0))
                 if entered_hours > 0:
-                    # Yarım gün tatilde +X, 17:00 sonrasına eklenir.
                     if is_half_holiday:
                         end = add_hours("17:00", entered_hours)
                     else:
                         end = add_hours(start, entered_hours)
-                    pct15 = calc_night_20_06(start, end) or 0.0
-                    pct60 = entered_hours
                 else:
-                    end = defaults["end"]
-                    pct15 = 0.0
-                    pct60 = 0.0
+                    end = str(defaults.get("end") or end)
             else:
                 num = max(0.0, float(value or 0.0))
                 end = add_hours(start, num)
-                auto15 = calc_night_20_06(start, end) or 0.0
-                if is_holiday or is_sunday:
-                    # P/B disi sayilar pazar/bayrama degil %60'a yazilir.
-                    pct60 = num
-                    pct15 = 0.0
-                else:
-                    # Hafta ici/sbt: %60 saatten dusulmez. %15 sadece 20:00 sonrasi.
-                    pct15 = auto15
-                    pct60 = num
+
+            hk_imp = holiday_kind_tr(work_d)
+            sp_imp = compute_mesai_split(start, end, work_d.weekday(), hk_imp)
+            pct60 = float(sp_imp.get("pct60", 0) or 0)
+            pct15 = float(sp_imp.get("pct15", 0) or 0)
+            pazar = float(sp_imp.get("pazar", 0) or 0)
+            bayram = float(sp_imp.get("bayram", 0) or 0)
 
             dup_key = (u.id, work_d.isoformat(), start, end)
             if dup_key in seen_keys:
@@ -3961,12 +3980,13 @@ def reset_password(token):
 @login_required
 def api_day_defaults_web():
     ymd = request.args.get("date", "")
-    end_override = request.args.get("endTime", "")
+    end_override = (request.args.get("endTime") or "").strip()
+    start_override = (request.args.get("startTime") or "").strip()
     try:
         d = parse_date(ymd)
     except Exception:
         return jsonify({"error": "invalid_date"}), 400
-    defaults = day_defaults(d, end_override if end_override else None)
+    defaults = day_defaults(d, end_override or None, start_override or None)
     return jsonify(defaults)
 
 
