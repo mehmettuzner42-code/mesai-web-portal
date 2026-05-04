@@ -429,6 +429,30 @@ def end_hhmm_for_saturday_net(start_hhmm: str, net_hours: float) -> str:
     return best_end
 
 
+def end_hhmm_for_bulk_special_target_pct60(start_hhmm: str, target_pct60: float, wd: int, holiday_kind) -> str:
+    """Pazar / resmi tatilde hücredeki sayı doğrudan %60 saatidir; bitiş, öğle ve tatil kurallarıyla bu nete uyan şekilde aranır."""
+    target = float(target_pct60 or 0.0)
+    if target <= 0:
+        return str(start_hhmm or "08:00")
+    sm = hhmm_to_minutes(start_hhmm) or 480
+    best_end = add_hours_hhmm(start_hhmm, target)
+    best_err = 1e9
+    for D in range(1, 36 * 60 + 1):
+        em = (sm + D) % (24 * 60)
+        end_str = f"{em // 60:02d}:{em % 60:02d}"
+        sp = compute_mesai_split(str(start_hhmm), end_str, int(wd), holiday_kind)
+        if float(sp.get("pazar", 0) or 0) > 1e-6 or float(sp.get("bayram", 0) or 0) > 1e-6:
+            continue
+        p60 = float(sp.get("pct60", 0) or 0)
+        err = abs(p60 - target)
+        if err < best_err - 1e-9:
+            best_err = err
+            best_end = end_str
+    if best_err > 0.02:
+        return add_hours_hhmm(start_hhmm, target)
+    return best_end
+
+
 def tr_upper(text: str) -> str:
     # Turkce buyuk harf donusumu: i->I degil, i->I ve ı->I kurallarini dogru uygular.
     if text is None:
@@ -1745,11 +1769,8 @@ def admin_users_bulk_entry():
                         continue
                     base_end = str(defaults.get("end") or "17:00")
                     end = add_hours_hhmm(base_end, extra_hours)
-                    sp_b = compute_mesai_split(start, end, d.weekday(), holiday_kind_tr(d))
-                    pct60 = float(sp_b.get("pct60", 0) or 0)
-                    pct15 = float(sp_b.get("pct15", 0) or 0)
-                    pazar = float(sp_b.get("pazar", 0) or 0)
-                    bayram = float(sp_b.get("bayram", 0) or 0)
+                    pct60 = float(extra_hours)
+                    pct15 = float(calc_night_20_06(start, end) or 0.0)
                     if bool(defaults.get("isHoliday")):
                         bayram = float(base_val)
                         pazar = 0.0
@@ -1763,22 +1784,27 @@ def admin_users_bulk_entry():
                         continue
                     if val <= 0:
                         continue
+                    hk_cell = holiday_kind_tr(d)
                     if val in (1.0, 0.5):
                         end = str(defaults.get("end") or start)
-                    else:
-                        end = add_hours_hhmm(start, val)
-                    sp_b = compute_mesai_split(start, end, d.weekday(), holiday_kind_tr(d))
-                    pct60 = float(sp_b.get("pct60", 0) or 0)
-                    pct15 = float(sp_b.get("pct15", 0) or 0)
-                    pazar = float(sp_b.get("pazar", 0) or 0)
-                    bayram = float(sp_b.get("bayram", 0) or 0)
-                    if val in (1.0, 0.5):
+                        sp_b = compute_mesai_split(start, end, d.weekday(), hk_cell)
+                        pct60 = float(sp_b.get("pct60", 0) or 0)
+                        pct15 = float(sp_b.get("pct15", 0) or 0)
+                        pazar = float(sp_b.get("pazar", 0) or 0)
+                        bayram = float(sp_b.get("bayram", 0) or 0)
                         if bool(defaults.get("isHoliday")):
                             bayram = float(val)
                             pazar = 0.0
                         else:
                             pazar = float(val)
                             bayram = 0.0
+                    else:
+                        end = end_hhmm_for_bulk_special_target_pct60(start, val, d.weekday(), hk_cell)
+                        sp_b = compute_mesai_split(start, end, d.weekday(), hk_cell)
+                        pct60 = float(val)
+                        pct15 = float(sp_b.get("pct15", 0) or 0)
+                        pazar = 0.0
+                        bayram = 0.0
                 else:
                     try:
                         hours = float(raw)

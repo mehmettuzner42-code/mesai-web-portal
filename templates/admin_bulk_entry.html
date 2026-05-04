@@ -674,6 +674,27 @@
             const o = computeMesaiSplitJS(start, end, wd, meta);
             return { pct60: o.pct60, pazar: o.pazar, bayram: o.bayram };
         }
+        function endHhmmForBulkSpecialTargetPct60(startH, targetPct60, meta) {
+            const target = parseFloat(targetPct60);
+            if (!(target > 0)) return String(startH || "08:00");
+            const sm = hhmmToMin(startH) ?? 480;
+            const wd = meta.wd;
+            let bestEnd = addHoursHhmm(startH, target);
+            let bestErr = 1e9;
+            for (let D = 1; D <= 36 * 60; D++) {
+                const em = (sm + D) % (24 * 60);
+                const endStr = `${String(Math.floor(em / 60)).padStart(2, "0")}:${String(em % 60).padStart(2, "0")}`;
+                const sp = computeMesaiSplitJS(startH, endStr, wd, meta);
+                if (sp.pazar > 1e-6 || sp.bayram > 1e-6) continue;
+                const err = Math.abs(sp.pct60 - target);
+                if (err < bestErr - 1e-9) {
+                    bestErr = err;
+                    bestEnd = endStr;
+                }
+            }
+            if (bestErr > 0.02) return addHoursHhmm(startH, target);
+            return bestEnd;
+        }
         function bulkCellContribution(meta, raw) {
             const raw0 = String(raw || "")
                 .trim()
@@ -706,7 +727,7 @@
                     if (meta.hol) return { pct60: 0, pazar: 0, bayram: val };
                     return { pct60: 0, pazar: val, bayram: 0 };
                 }
-                end = addHoursHhmm(start, val);
+                end = endHhmmForBulkSpecialTargetPct60(start, val, meta);
                 return { pct60: val, pazar: 0, bayram: 0 };
             }
             const hours = parseFloat(raw0);
@@ -765,6 +786,55 @@
             if (t && t.matches && t.matches("input[type='text'][name^='cell_']")) recalcBulkTotals();
         });
         recalcBulkTotals();
+
+        function getBulkCellMatrix() {
+            return Array.from(gridTable.querySelectorAll("tbody tr[data-bulk-user-id]")).map((tr) =>
+                Array.from(tr.querySelectorAll("input[type='text'][name^='cell_']"))
+            );
+        }
+        function focusBulkCell(inp) {
+            if (inp) {
+                inp.focus();
+                try {
+                    inp.select();
+                } catch (_e) {}
+            }
+        }
+        gridTable.addEventListener("keydown", (e) => {
+            const el = e.target;
+            if (!el || !el.matches || !el.matches("input[type='text'][name^='cell_']")) return;
+            if (e.altKey || e.ctrlKey || e.metaKey) return;
+            const matrix = getBulkCellMatrix();
+            let ri = -1;
+            let ci = -1;
+            for (let r = 0; r < matrix.length; r++) {
+                const c = matrix[r].indexOf(el);
+                if (c !== -1) {
+                    ri = r;
+                    ci = c;
+                    break;
+                }
+            }
+            if (ri < 0 || ci < 0) return;
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (ri + 1 < matrix.length) focusBulkCell(matrix[ri + 1][ci]);
+                return;
+            }
+            if (e.key === "Tab") {
+                e.preventDefault();
+                if (!e.shiftKey) {
+                    if (ci + 1 < matrix[ri].length) focusBulkCell(matrix[ri][ci + 1]);
+                    else if (ri + 1 < matrix.length) focusBulkCell(matrix[ri + 1][0]);
+                } else {
+                    if (ci > 0) focusBulkCell(matrix[ri][ci - 1]);
+                    else if (ri > 0) {
+                        const prev = matrix[ri - 1];
+                        focusBulkCell(prev[prev.length - 1]);
+                    }
+                }
+            }
+        });
 
         const clearActiveRows = () => {
             gridTable.querySelectorAll("tbody tr.active-row").forEach((tr) => tr.classList.remove("active-row"));
