@@ -3510,17 +3510,10 @@ def admin_export_selected_users_xlsx():
         letter = get_column_letter(col)
         dim = ws.column_dimensions[letter]
         keep_width = dim.width
-        keep_custom_width = dim.customWidth
-        keep_best_fit = dim.bestFit
-        keep_outline = dim.outlineLevel
-        keep_collapsed = dim.collapsed
         dim.hidden = day_num not in first_month_visible_days
-        # Hidden disinda tum boyut/ozellikleri aynen geri yukle.
-        dim.width = keep_width
-        dim.customWidth = keep_custom_width
-        dim.bestFit = keep_best_fit
-        dim.outlineLevel = keep_outline
-        dim.collapsed = keep_collapsed
+        # Hidden disinda genisligi koru (customWidth gibi read-only alanlara dokunma).
+        if keep_width is not None:
+            dim.width = keep_width
 
     export_rows = []
     for u in users:
