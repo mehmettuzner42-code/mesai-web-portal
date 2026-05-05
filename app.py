@@ -3503,9 +3503,10 @@ def admin_export_selected_users_xlsx():
             pass
         prev_day_num = day_num
 
-    # Rapor doneminde olmayan ay sonu gun kolonlarini gizle (24..31 -> G..N).
-    for day_num in range(24, 32):
-        col = 7 + (day_num - 24)
+    # Sadece L, M, N (29, 30, 31) icin kosullu gizleme yap.
+    # Mevcut sutun genisliklerine dokunulmaz; sadece hidden bayragi guncellenir.
+    for day_num in (29, 30, 31):
+        col = 7 + (day_num - 24)  # 29->L, 30->M, 31->N
         letter = get_column_letter(col)
         ws.column_dimensions[letter].hidden = day_num not in first_month_visible_days
 
