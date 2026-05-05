@@ -20,6 +20,12 @@
 .modern-cancel-btn:active {
     transform: translateY(0);
 }
+.backup-action-btn {
+    width: 132px;
+    height: 40px;
+    padding: 0;
+    box-sizing: border-box;
+}
 </style>
 <div class="header-row">
     <h2>Yedek İçe Aktar (Kişi Bazlı)</h2>
@@ -76,9 +82,9 @@
         <div class="admin-export-bar" style="justify-content:space-between;">
             <a
                 href="{{ url_for('admin_users') }}"
-                class="success-btn modern-cancel-btn"
+                class="success-btn modern-cancel-btn backup-action-btn"
             >İptal</a>
-            <button type="submit" class="success-btn" onclick="return confirm('Seçili personeller için içe aktarma başlatılsın mı?')">İçe Aktar</button>
+            <button type="submit" class="success-btn backup-action-btn" onclick="return confirm('Seçili personeller için içe aktarma başlatılsın mı?')">İçe Aktar</button>
         </div>
     </form>
 </div>
