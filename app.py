@@ -1765,13 +1765,18 @@ def admin_users_bulk_entry():
                         extra_hours = float(right)
                     except Exception:
                         continue
-                    if extra_hours < 0 or base_val not in (1.0, 0.5):
+                    # Ozel gun hucrelerinde 0+X degerini destekle:
+                    # 0 kismi pazar/bayrama yazilmaz, + sonrasi %60'a gider.
+                    if extra_hours < 0 or base_val not in (0.0, 0.5, 1.0):
                         continue
                     base_end = str(defaults.get("end") or "17:00")
                     end = add_hours_hhmm(base_end, extra_hours)
                     pct60 = float(extra_hours)
                     pct15 = float(calc_night_20_06(start, end) or 0.0)
-                    if bool(defaults.get("isHoliday")):
+                    if base_val == 0.0:
+                        pazar = 0.0
+                        bayram = 0.0
+                    elif bool(defaults.get("isHoliday")):
                         bayram = float(base_val)
                         pazar = 0.0
                     else:
@@ -2086,122 +2091,187 @@ def admin_backup_import():
         except Exception:
             return None
 
+    import_scope = (request.form.get("import_scope") or "all").strip().lower()
+    selected_ids = [int(v) for v in request.form.getlist("selected_user_ids") if str(v).isdigit()]
+    selected_id_set = set(selected_ids)
+    if import_scope == "selected" and not selected_id_set:
+        flash("Kısmi içe aktarma için en az bir personel seçin.", "error")
+        return redirect(url_for("admin_users"))
+
     try:
-        OvertimeEntry.query.delete(synchronize_session=False)
-        UserProfile.query.delete(synchronize_session=False)
-        DelegatedAdminPermission.query.delete(synchronize_session=False)
-        UnitChange.query.delete(synchronize_session=False)
-        PeriodLock.query.delete(synchronize_session=False)
-        AppSetting.query.delete(synchronize_session=False)
-        User.query.delete(synchronize_session=False)
+        if import_scope == "all":
+            OvertimeEntry.query.delete(synchronize_session=False)
+            UserProfile.query.delete(synchronize_session=False)
+            DelegatedAdminPermission.query.delete(synchronize_session=False)
+            UnitChange.query.delete(synchronize_session=False)
+            PeriodLock.query.delete(synchronize_session=False)
+            AppSetting.query.delete(synchronize_session=False)
+            User.query.delete(synchronize_session=False)
 
-        for u in payload.get("users", []):
-            db.session.add(
-                User(
-                    id=int(u.get("id")),
-                    username=str(u.get("username", "")).strip(),
-                    email=str(u.get("email", "")).strip().lower(),
-                    password_hash=str(u.get("password_hash", "")),
-                    created_at=parse_dt(u.get("created_at")) or datetime.utcnow(),
+            for u in payload.get("users", []):
+                db.session.add(
+                    User(
+                        id=int(u.get("id")),
+                        username=str(u.get("username", "")).strip(),
+                        email=str(u.get("email", "")).strip().lower(),
+                        password_hash=str(u.get("password_hash", "")),
+                        created_at=parse_dt(u.get("created_at")) or datetime.utcnow(),
+                    )
                 )
-            )
-        db.session.flush()
+            db.session.flush()
 
-        for p in payload.get("profiles", []):
-            db.session.add(
-                UserProfile(
-                    id=int(p.get("id")),
-                    user_id=int(p.get("user_id")),
-                    daire_baskanligi=str(p.get("daire_baskanligi", "")),
-                    sube_mudurlugu=str(p.get("sube_mudurlugu", "")),
-                    ad_soyad=str(p.get("ad_soyad", "")),
-                    sicil_no=str(p.get("sicil_no", "")),
-                    ekip_kodu=str(p.get("ekip_kodu", "")),
-                    employment_end_date=parse_date(str(p.get("employment_end_date", ""))) if str(p.get("employment_end_date", "")).strip() else None,
+            for p in payload.get("profiles", []):
+                db.session.add(
+                    UserProfile(
+                        id=int(p.get("id")),
+                        user_id=int(p.get("user_id")),
+                        daire_baskanligi=str(p.get("daire_baskanligi", "")),
+                        sube_mudurlugu=str(p.get("sube_mudurlugu", "")),
+                        ad_soyad=str(p.get("ad_soyad", "")),
+                        sicil_no=str(p.get("sicil_no", "")),
+                        ekip_kodu=str(p.get("ekip_kodu", "")),
+                        employment_end_date=parse_date(str(p.get("employment_end_date", ""))) if str(p.get("employment_end_date", "")).strip() else None,
+                    )
                 )
-            )
 
-        for e in payload.get("entries", []):
-            db.session.add(
-                OvertimeEntry(
-                    id=int(e.get("id")),
-                    user_id=int(e.get("user_id")),
-                    work_date=parse_date(str(e.get("work_date", ""))),
-                    start_time=str(e.get("start_time", "")),
-                    end_time=str(e.get("end_time", "")),
-                    pct60=float(e.get("pct60", 0) or 0),
-                    pct15=float(e.get("pct15", 0) or 0),
-                    pazar=float(e.get("pazar", 0) or 0),
-                    bayram=float(e.get("bayram", 0) or 0),
-                    description=str(e.get("description", "")),
-                    created_at=parse_dt(e.get("created_at")) or datetime.utcnow(),
-                    updated_at=parse_dt(e.get("updated_at")) or datetime.utcnow(),
+            for e in payload.get("entries", []):
+                db.session.add(
+                    OvertimeEntry(
+                        id=int(e.get("id")),
+                        user_id=int(e.get("user_id")),
+                        work_date=parse_date(str(e.get("work_date", ""))),
+                        start_time=str(e.get("start_time", "")),
+                        end_time=str(e.get("end_time", "")),
+                        pct60=float(e.get("pct60", 0) or 0),
+                        pct15=float(e.get("pct15", 0) or 0),
+                        pazar=float(e.get("pazar", 0) or 0),
+                        bayram=float(e.get("bayram", 0) or 0),
+                        description=str(e.get("description", "")),
+                        created_at=parse_dt(e.get("created_at")) or datetime.utcnow(),
+                        updated_at=parse_dt(e.get("updated_at")) or datetime.utcnow(),
+                    )
                 )
-            )
 
-        for p in payload.get("delegated_permissions", []):
-            db.session.add(
-                DelegatedAdminPermission(
-                    id=int(p.get("id")),
-                    owner_user_id=int(p.get("owner_user_id")),
-                    delegate_user_id=int(p.get("delegate_user_id")),
-                    allowed_user_ids_json=str(p.get("allowed_user_ids_json", "[]")),
-                    can_view_passwords=bool(p.get("can_view_passwords", False)),
-                    can_reset_password=bool(p.get("can_reset_password", False)),
-                    can_view_users_screen=bool(p.get("can_view_users_screen", False)),
-                    can_view_charts=bool(p.get("can_view_charts", False)),
-                    can_view_filters=bool(p.get("can_view_filters", False)),
-                    can_add_user=bool(p.get("can_add_user", False)),
-                    can_change_email=bool(p.get("can_change_email", False)),
-                    can_period_lock=bool(p.get("can_period_lock", False)),
-                    can_bulk_entry=bool(p.get("can_bulk_entry", False)),
-                    can_view_terminated_users=bool(p.get("can_view_terminated_users", False)),
-                    can_unit_change=bool(p.get("can_unit_change", False)),
-                    scope_daire_baskanligi=str(p.get("scope_daire_baskanligi", "")),
-                    scope_sube_mudurlugu=str(p.get("scope_sube_mudurlugu", "")),
-                    created_at=parse_dt(p.get("created_at")) or datetime.utcnow(),
-                    updated_at=parse_dt(p.get("updated_at")) or datetime.utcnow(),
+            for p in payload.get("delegated_permissions", []):
+                db.session.add(
+                    DelegatedAdminPermission(
+                        id=int(p.get("id")),
+                        owner_user_id=int(p.get("owner_user_id")),
+                        delegate_user_id=int(p.get("delegate_user_id")),
+                        allowed_user_ids_json=str(p.get("allowed_user_ids_json", "[]")),
+                        can_view_passwords=bool(p.get("can_view_passwords", False)),
+                        can_reset_password=bool(p.get("can_reset_password", False)),
+                        can_view_users_screen=bool(p.get("can_view_users_screen", False)),
+                        can_view_charts=bool(p.get("can_view_charts", False)),
+                        can_view_filters=bool(p.get("can_view_filters", False)),
+                        can_add_user=bool(p.get("can_add_user", False)),
+                        can_change_email=bool(p.get("can_change_email", False)),
+                        can_period_lock=bool(p.get("can_period_lock", False)),
+                        can_bulk_entry=bool(p.get("can_bulk_entry", False)),
+                        can_view_terminated_users=bool(p.get("can_view_terminated_users", False)),
+                        can_unit_change=bool(p.get("can_unit_change", False)),
+                        scope_daire_baskanligi=str(p.get("scope_daire_baskanligi", "")),
+                        scope_sube_mudurlugu=str(p.get("scope_sube_mudurlugu", "")),
+                        created_at=parse_dt(p.get("created_at")) or datetime.utcnow(),
+                        updated_at=parse_dt(p.get("updated_at")) or datetime.utcnow(),
+                    )
                 )
-            )
 
-        for r in payload.get("unit_changes", []):
-            db.session.add(
-                UnitChange(
-                    id=int(r.get("id")),
-                    user_id=int(r.get("user_id")),
-                    transfer_date=parse_date(str(r.get("transfer_date", ""))),
-                    from_daire_baskanligi=str(r.get("from_daire_baskanligi", "")),
-                    from_sube_mudurlugu=str(r.get("from_sube_mudurlugu", "")),
-                    to_daire_baskanligi=str(r.get("to_daire_baskanligi", "")),
-                    to_sube_mudurlugu=str(r.get("to_sube_mudurlugu", "")),
-                    created_at=parse_dt(r.get("created_at")) or datetime.utcnow(),
+            for r in payload.get("unit_changes", []):
+                db.session.add(
+                    UnitChange(
+                        id=int(r.get("id")),
+                        user_id=int(r.get("user_id")),
+                        transfer_date=parse_date(str(r.get("transfer_date", ""))),
+                        from_daire_baskanligi=str(r.get("from_daire_baskanligi", "")),
+                        from_sube_mudurlugu=str(r.get("from_sube_mudurlugu", "")),
+                        to_daire_baskanligi=str(r.get("to_daire_baskanligi", "")),
+                        to_sube_mudurlugu=str(r.get("to_sube_mudurlugu", "")),
+                        created_at=parse_dt(r.get("created_at")) or datetime.utcnow(),
+                    )
                 )
-            )
 
-        for r in payload.get("period_locks", []):
-            db.session.add(
-                PeriodLock(
-                    id=int(r.get("id")),
-                    start_year=int(r.get("start_year")),
-                    start_month=int(r.get("start_month")),
-                    is_locked=bool(r.get("is_locked", False)),
-                    created_at=parse_dt(r.get("created_at")) or datetime.utcnow(),
-                    updated_at=parse_dt(r.get("updated_at")) or datetime.utcnow(),
+            for r in payload.get("period_locks", []):
+                db.session.add(
+                    PeriodLock(
+                        id=int(r.get("id")),
+                        start_year=int(r.get("start_year")),
+                        start_month=int(r.get("start_month")),
+                        is_locked=bool(r.get("is_locked", False)),
+                        created_at=parse_dt(r.get("created_at")) or datetime.utcnow(),
+                        updated_at=parse_dt(r.get("updated_at")) or datetime.utcnow(),
+                    )
                 )
-            )
 
-        for s in payload.get("app_settings", []):
-            db.session.add(
-                AppSetting(
-                    id=int(s.get("id")),
-                    setting_key=str(s.get("setting_key", "")),
-                    setting_value=str(s.get("setting_value", "")),
+            for s in payload.get("app_settings", []):
+                db.session.add(
+                    AppSetting(
+                        id=int(s.get("id")),
+                        setting_key=str(s.get("setting_key", "")),
+                        setting_value=str(s.get("setting_value", "")),
+                    )
                 )
-            )
+            db.session.commit()
+            invalidate_delegate_permission_cache()
+            flash("Tam yedek içe aktarıldı. Tüm veriler geri yüklendi.", "success")
+        else:
+            payload_users = [u for u in payload.get("users", []) if int(u.get("id") or 0) in selected_id_set]
+            payload_profiles = [p for p in payload.get("profiles", []) if int(p.get("user_id") or 0) in selected_id_set]
+            payload_entries = [e for e in payload.get("entries", []) if int(e.get("user_id") or 0) in selected_id_set]
 
-        db.session.commit()
-        invalidate_delegate_permission_cache()
-        flash("Tam yedek içe aktarıldı. Tüm veriler geri yüklendi.", "success")
+            existing_users = {u.id: u for u in User.query.filter(User.id.in_(list(selected_id_set) or [0])).all()}
+            for u in payload_users:
+                uid = int(u.get("id"))
+                row = existing_users.get(uid)
+                if row is None:
+                    row = User(id=uid)
+                    db.session.add(row)
+                row.username = str(u.get("username", "")).strip()
+                row.email = str(u.get("email", "")).strip().lower()
+                row.password_hash = str(u.get("password_hash", ""))
+                row.created_at = parse_dt(u.get("created_at")) or row.created_at or datetime.utcnow()
+
+            existing_profiles = {
+                p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_(list(selected_id_set) or [0])).all()
+            }
+            for p in payload_profiles:
+                uid = int(p.get("user_id"))
+                row = existing_profiles.get(uid)
+                if row is None:
+                    row = UserProfile(user_id=uid)
+                    db.session.add(row)
+                row.daire_baskanligi = str(p.get("daire_baskanligi", ""))
+                row.sube_mudurlugu = str(p.get("sube_mudurlugu", ""))
+                row.ad_soyad = str(p.get("ad_soyad", ""))
+                row.sicil_no = str(p.get("sicil_no", ""))
+                row.ekip_kodu = str(p.get("ekip_kodu", ""))
+                row.employment_end_date = (
+                    parse_date(str(p.get("employment_end_date", ""))) if str(p.get("employment_end_date", "")).strip() else None
+                )
+
+            OvertimeEntry.query.filter(OvertimeEntry.user_id.in_(list(selected_id_set) or [0])).delete(synchronize_session=False)
+            for e in payload_entries:
+                db.session.add(
+                    OvertimeEntry(
+                        user_id=int(e.get("user_id")),
+                        work_date=parse_date(str(e.get("work_date", ""))),
+                        start_time=str(e.get("start_time", "")),
+                        end_time=str(e.get("end_time", "")),
+                        pct60=float(e.get("pct60", 0) or 0),
+                        pct15=float(e.get("pct15", 0) or 0),
+                        pazar=float(e.get("pazar", 0) or 0),
+                        bayram=float(e.get("bayram", 0) or 0),
+                        description=str(e.get("description", "")),
+                        created_at=parse_dt(e.get("created_at")) or datetime.utcnow(),
+                        updated_at=parse_dt(e.get("updated_at")) or datetime.utcnow(),
+                    )
+                )
+
+            db.session.commit()
+            flash(
+                f"Kısmi yedek içe aktarma tamamlandı. {len(selected_id_set)} seçili personel işlendi, diğer kullanıcılara dokunulmadı.",
+                "success",
+            )
     except Exception as exc:
         db.session.rollback()
         flash(f"Yedek içe aktarma başarısız: {exc}", "error")
@@ -3605,17 +3675,24 @@ def admin_import_period_excel():
     period_options = [(selected_year, m) for m in range(1, 13)]
     active_start = (selected_year, 1)
     if request.method == "GET":
+        users = User.query.order_by(User.email.asc()).all()
+        profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_([u.id for u in users] or [0])).all()}
+        rows = [{"user": u, "profile": profiles.get(u.id) or UserProfile(user_id=u.id)} for u in users]
         return render_template(
             "admin_import_excel.html",
             years=years,
             selected_year=selected_year,
             period_options=period_options,
             period_value=f"{active_start[0]:04d}-{active_start[1]:02d}",
+            rows=rows,
         )
 
     upload = request.files.get("excel_file")
     year = request.form.get("year", type=int)
     period = (request.form.get("period") or "").strip()
+    selected_ids = [int(v) for v in request.form.getlist("selected_user_ids") if str(v).isdigit()]
+    import_all_users = (request.form.get("import_all_users") or "").strip() == "1"
+    selected_id_set = set(selected_ids)
     if not upload or not upload.filename:
         flash("Lütfen bir Excel dosyası seçin.", "error")
         return redirect(url_for("admin_import_period_excel"))
@@ -3658,6 +3735,9 @@ def admin_import_period_excel():
 
     users = User.query.order_by(User.email.asc()).all()
     profiles = {p.user_id: p for p in UserProfile.query.all()}
+    if not import_all_users and not selected_id_set:
+        flash("İçe aktarma için en az bir personel seçin veya 'Tümünü seç' kutusunu işaretleyin.", "error")
+        return redirect(url_for("admin_import_period_excel", year=year))
 
     def norm_sicil(v):
         t = str(v or "").strip()
@@ -3729,6 +3809,8 @@ def admin_import_period_excel():
         u = user_by_sicil.get(sicil)
         if not u:
             skipped_rows += 1
+            continue
+        if (not import_all_users) and (u.id not in selected_id_set):
             continue
         matched_user_ids.add(u.id)
         for col, work_d in day_col_map.items():
@@ -3814,7 +3896,7 @@ def admin_import_period_excel():
             rows_added += 1
 
     if not matched_user_ids:
-        flash("Excelde eşleşen sicil numarası bulunamadı.", "error")
+        flash("Excelde seçilen personeller için eşleşen sicil numarası bulunamadı.", "error")
         return redirect(url_for("admin_import_period_excel"))
 
     p_start, p_end = period_for_start(sy, sm)
@@ -3840,6 +3922,10 @@ def admin_import_period_excel():
 @login_required
 @admin_required
 def admin_delete_period_all():
+    selected_ids = [int(v) for v in request.form.getlist("selected_user_ids") if str(v).isdigit()]
+    if not selected_ids:
+        flash("Veri silme için üst listeden en az bir personel seçin.", "error")
+        return redirect(url_for("admin_users"))
     period = (request.form.get("period") or "").strip()
     if "-" not in period:
         flash("Dönem seçimi eksik.", "error")
@@ -3851,11 +3937,12 @@ def admin_delete_period_all():
         return redirect(url_for("admin_users"))
     p_start, p_end = period_for_start(sy, sm)
     deleted = OvertimeEntry.query.filter(
+        OvertimeEntry.user_id.in_(selected_ids),
         OvertimeEntry.work_date >= p_start,
         OvertimeEntry.work_date <= p_end,
     ).delete(synchronize_session=False)
     db.session.commit()
-    flash(f"Seçilen dönem için toplam {deleted} kayıt silindi.", "success")
+    flash(f"Seçilen personeller için seçilen dönemde toplam {deleted} kayıt silindi.", "success")
     return redirect(url_for("admin_users"))
 
 

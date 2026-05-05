@@ -57,6 +57,8 @@
         </a>
         <form id="backupImportForm" class="admin-sidebar-form" method="post" action="{{ url_for('admin_backup_import') }}" enctype="multipart/form-data">
             <input id="backupFileInput" type="file" name="backup_file" accept=".json,application/json" style="display:none;">
+            <input id="backupImportScope" type="hidden" name="import_scope" value="all">
+            <div id="backupImportSelectedIds"></div>
             <button type="button" id="backupImportBtn" class="admin-sidebar-btn admin-sidebar-btn--backup-in">
                 <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9M8 13l4 4 4-4"/><path d="M5 3h14"/></svg></span>
                 <span class="admin-sidebar-btn__text">Yedek İçe</span>
@@ -171,7 +173,7 @@
                 class="danger-link"
                 formaction="{{ url_for('admin_delete_period_all') }}"
                 formmethod="post"
-                onclick="return confirm('Seçilen yıl/dönem için TÜM kullanıcıların verileri silinsin mi?');"
+                onclick="return confirm('Üst listede işaretlediğiniz personellerin, seçilen yıl/dönem verileri silinsin mi?');"
             >Veri Sil</button>
             {% endif %}
         </div>
@@ -361,6 +363,8 @@
     const backupImportBtn = document.getElementById("backupImportBtn");
     const backupFileInput = document.getElementById("backupFileInput");
     const backupImportForm = document.getElementById("backupImportForm");
+    const backupImportScope = document.getElementById("backupImportScope");
+    const backupImportSelectedIds = document.getElementById("backupImportSelectedIds");
     const sortableHeaders = Array.from(usersTable.querySelectorAll("thead th.sortable"));
     const sortStorageKey = `adminUsersSort:${String({{ session.get('user_id') or 0 }})}`;
     const sortState = { key: null, dir: "asc" };
@@ -693,9 +697,37 @@
         backupImportBtn.addEventListener("click", () => backupFileInput.click());
         backupFileInput.addEventListener("change", () => {
             if (!backupFileInput.files || backupFileInput.files.length === 0) return;
-            if (!confirm("Seçilen tam yedek dosyası içe aktarılsın mı? Mevcut tüm veriler üzerine yazılır.")) {
+            const selected = Array.from(usersTable.querySelectorAll("tbody tr.selectable-row input.row-select:checked"))
+                .map((c) => c.value)
+                .filter((v) => String(v || "").trim() !== "");
+            let scope = "all";
+            if (selected.length > 0) {
+                const useSelected = confirm(
+                    "Seçili personeller için kısmi içe aktarma yapılsın mı?\n" +
+                    "Tamam: Sadece seçili personeller içe aktarılır.\n" +
+                    "İptal: Tüm kullanıcılar içe aktarılır."
+                );
+                scope = useSelected ? "selected" : "all";
+            }
+            if (!confirm(scope === "selected"
+                ? "Seçili personeller için yedek içe aktarılsın mı? Diğer kullanıcılara dokunulmaz."
+                : "Tüm kullanıcılar için tam yedek içe aktarılsın mı? Mevcut veriler üzerine yazılır."
+            )) {
                 backupFileInput.value = "";
                 return;
+            }
+            if (backupImportScope) backupImportScope.value = scope;
+            if (backupImportSelectedIds) {
+                backupImportSelectedIds.innerHTML = "";
+                if (scope === "selected") {
+                    selected.forEach((id) => {
+                        const inp = document.createElement("input");
+                        inp.type = "hidden";
+                        inp.name = "selected_user_ids";
+                        inp.value = id;
+                        backupImportSelectedIds.appendChild(inp);
+                    });
+                }
             }
             backupImportForm.submit();
         });

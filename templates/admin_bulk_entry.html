@@ -712,10 +712,11 @@
                 const extraHours = parseFloat(right);
                 if (!Number.isFinite(baseVal) || !Number.isFinite(extraHours) || extraHours < 0)
                     return { pct60: 0, pazar: 0, bayram: 0 };
-                if (baseVal !== 1 && baseVal !== 0.5) return { pct60: 0, pazar: 0, bayram: 0 };
+                if (baseVal !== 0 && baseVal !== 1 && baseVal !== 0.5) return { pct60: 0, pazar: 0, bayram: 0 };
                 const baseEnd = meta.defEnd || "17:00";
                 end = addHoursHhmm(baseEnd, extraHours);
                 const pct60 = extraHours;
+                if (baseVal === 0) return { pct60, pazar: 0, bayram: 0 };
                 if (meta.hol) return { pct60, pazar: 0, bayram: baseVal };
                 return { pct60, pazar: baseVal, bayram: 0 };
             }

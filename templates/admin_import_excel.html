@@ -11,6 +11,10 @@
             <input type="file" name="excel_file" accept=".xlsx,.xlsm,.xltx,.xltm" required>
         </label>
         <div class="admin-export-bar">
+            <label style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="importSelectAllUsersFlag" name="import_all_users" value="1">
+                Tüm kullanıcıları içe aktar
+            </label>
             <label>Yıl
                 <select name="year" id="importYearSelect" required>
                     {% for y in years %}
@@ -37,17 +41,145 @@
             Not: Sicil no C sütunundan, mesai işaretleri G..AK sütunundan okunur.
             P = Pazar, B = Bayram. P/B dışı sayılar ilgili güne göre %60 ve gerekiyorsa %15'e ayrılır.
         </p>
+
+        <div class="table-wrap recent-scroll">
+            <table class="compact-table" id="importUsersTable">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="importUsersSelectAll" title="Tümünü Seç"></th>
+                        <th>Sıra</th>
+                        <th class="sortable" data-sort-key="2">Sicil No</th>
+                        <th class="sortable" data-sort-key="3">Ad Soyad</th>
+                        <th class="sortable" data-sort-key="4">Daire Başkanlığı</th>
+                        <th class="sortable" data-sort-key="5">Şube Müdürlüğü</th>
+                        <th class="sortable" data-sort-key="6">Ekip Kodu</th>
+                        <th class="sortable" data-sort-key="7">E-posta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr class="selectable-row">
+                        <td><input class="row-select" type="checkbox" name="selected_user_ids" value="{{ row.user.id }}"></td>
+                        <td class="row-order-cell"></td>
+                        <td>{{ row.profile.sicil_no or "-" }}</td>
+                        <td>{{ row.profile.ad_soyad or "-" }}</td>
+                        <td>{{ row.profile.daire_baskanligi or "-" }}</td>
+                        <td>{{ row.profile.sube_mudurlugu or "-" }}</td>
+                        <td>{{ row.profile.ekip_kodu or "-" }}</td>
+                        <td>{{ row.user.email }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="8">Listelenecek kullanıcı bulunamadı.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </form>
 </div>
 <script>
 (() => {
     const yearSel = document.getElementById("importYearSelect");
+    const usersTable = document.getElementById("importUsersTable");
+    const usersSelectAll = document.getElementById("importUsersSelectAll");
+    const importAllFlag = document.getElementById("importSelectAllUsersFlag");
+    const sortableHeaders = usersTable ? Array.from(usersTable.querySelectorAll("thead th.sortable")) : [];
+    const sortState = { key: null, dir: "asc" };
     if (!yearSel) return;
     yearSel.addEventListener("change", () => {
         const url = new URL(window.location.href);
         url.searchParams.set("year", yearSel.value);
         window.location.href = url.toString();
     });
+
+    if (!usersTable || !usersSelectAll) return;
+    function updateRowHighlight(checkbox) {
+        const tr = checkbox.closest("tr");
+        if (!tr) return;
+        tr.classList.toggle("selected-row", checkbox.checked);
+    }
+    function refreshOrderNumbers() {
+        let i = 1;
+        usersTable.querySelectorAll("tbody tr.selectable-row").forEach((tr) => {
+            const cell = tr.querySelector(".row-order-cell");
+            if (cell) cell.textContent = String(i++);
+        });
+    }
+    function syncSelectAll() {
+        const checks = Array.from(usersTable.querySelectorAll("tbody input.row-select"));
+        const checkedCount = checks.filter((c) => c.checked).length;
+        usersSelectAll.checked = checks.length > 0 && checkedCount === checks.length;
+        usersSelectAll.indeterminate = checkedCount > 0 && checkedCount < checks.length;
+    }
+    function readCellText(tr, key) {
+        const cell = tr.querySelector(`td:nth-child(${key + 1})`);
+        return (cell?.textContent || "").trim();
+    }
+    function updateSortIndicators() {
+        sortableHeaders.forEach((th) => {
+            const baseLabel = (th.dataset.label || th.textContent || "").replace(" ▲", "").replace(" ▼", "").trim();
+            th.dataset.label = baseLabel;
+            if (String(sortState.key) !== String(th.dataset.sortKey)) th.textContent = baseLabel;
+            else th.textContent = `${baseLabel} ${sortState.dir === "asc" ? "▲" : "▼"}`;
+        });
+    }
+    function applySort(key, dir) {
+        sortState.key = String(key);
+        sortState.dir = dir === "desc" ? "desc" : "asc";
+        const tbody = usersTable.querySelector("tbody");
+        if (!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll("tr.selectable-row"));
+        rows.sort((a, b) => {
+            const av = readCellText(a, Number(sortState.key));
+            const bv = readCellText(b, Number(sortState.key));
+            const cmp = av.localeCompare(bv, "tr", { numeric: true, sensitivity: "base" });
+            return sortState.dir === "asc" ? cmp : -cmp;
+        });
+        rows.forEach((tr) => tbody.appendChild(tr));
+        refreshOrderNumbers();
+        updateSortIndicators();
+    }
+
+    usersSelectAll.addEventListener("change", () => {
+        usersTable.querySelectorAll("tbody input.row-select").forEach((cb) => {
+            cb.checked = usersSelectAll.checked;
+            updateRowHighlight(cb);
+        });
+        syncSelectAll();
+    });
+    usersTable.querySelectorAll("tbody input.row-select").forEach((cb) => {
+        cb.addEventListener("change", () => {
+            updateRowHighlight(cb);
+            syncSelectAll();
+        });
+        updateRowHighlight(cb);
+    });
+    sortableHeaders.forEach((th) => {
+        th.style.cursor = "pointer";
+        th.addEventListener("click", () => {
+            const key = th.dataset.sortKey;
+            if (!key) return;
+            const nextDir = String(sortState.key) === String(key) && sortState.dir === "asc" ? "desc" : "asc";
+            applySort(key, nextDir);
+        });
+    });
+    if (importAllFlag) {
+        importAllFlag.addEventListener("change", () => {
+            const disabled = importAllFlag.checked;
+            usersSelectAll.disabled = disabled;
+            usersTable.querySelectorAll("tbody input.row-select").forEach((cb) => {
+                cb.disabled = disabled;
+            });
+            if (disabled) {
+                usersSelectAll.checked = false;
+                usersSelectAll.indeterminate = false;
+            } else {
+                syncSelectAll();
+            }
+        });
+    }
+    refreshOrderNumbers();
+    updateSortIndicators();
+    syncSelectAll();
 })();
 </script>
 {% endblock %}
