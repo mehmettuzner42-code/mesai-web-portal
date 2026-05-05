@@ -2065,14 +2065,20 @@ def admin_backup_export():
     return send_file(mem, mimetype="application/json", as_attachment=True, download_name=name)
 
 
-@app.post("/admin/backup/import")
+@app.route("/admin/backup/import", methods=["GET", "POST"])
 @login_required
 @admin_required
 def admin_backup_import():
+    if request.method == "GET":
+        users = User.query.order_by(User.email.asc()).all()
+        profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_([u.id for u in users] or [0])).all()}
+        rows = [{"user": u, "profile": profiles.get(u.id) or UserProfile(user_id=u.id)} for u in users]
+        return render_template("admin_backup_import.html", rows=rows)
+
     f = request.files.get("backup_file")
     if f is None or not (f.filename or "").strip():
         flash("Yedek dosyası seçin.", "error")
-        return redirect(url_for("admin_users"))
+        return redirect(url_for("admin_backup_import"))
     try:
         raw = f.read()
         payload = json.loads(raw.decode("utf-8-sig"))
@@ -2080,7 +2086,7 @@ def admin_backup_import():
             raise ValueError("Geçersiz yedek formatı")
     except Exception as exc:
         flash(f"Yedek dosyası okunamadı: {exc}", "error")
-        return redirect(url_for("admin_users"))
+        return redirect(url_for("admin_backup_import"))
 
     def parse_dt(v):
         t = str(v or "").strip()
@@ -2091,12 +2097,12 @@ def admin_backup_import():
         except Exception:
             return None
 
-    import_scope = (request.form.get("import_scope") or "all").strip().lower()
+    import_scope = (request.form.get("import_scope") or "selected").strip().lower()
     selected_ids = [int(v) for v in request.form.getlist("selected_user_ids") if str(v).isdigit()]
     selected_id_set = set(selected_ids)
     if import_scope == "selected" and not selected_id_set:
         flash("Kısmi içe aktarma için en az bir personel seçin.", "error")
-        return redirect(url_for("admin_users"))
+        return redirect(url_for("admin_backup_import"))
 
     try:
         if import_scope == "all":
@@ -2275,7 +2281,7 @@ def admin_backup_import():
     except Exception as exc:
         db.session.rollback()
         flash(f"Yedek içe aktarma başarısız: {exc}", "error")
-    return redirect(url_for("admin_users"))
+    return redirect(url_for("admin_backup_import"))
 
 
 @app.get("/admin/users/charts")
