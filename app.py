@@ -20,6 +20,7 @@ from flask import Flask, flash, g, has_request_context, jsonify, redirect, rende
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl.cell.cell import MergedCell
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
 from openpyxl.styles import PatternFill
 from openpyxl.worksheet.page import PageMargins
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -3487,6 +3488,7 @@ def admin_export_selected_users_xlsx():
     # G..AK (7..37) kolonları: 24..31 + 1..23
     day_numbers_in_sheet = list(range(24, 32)) + list(range(1, 24))
     day_col_map = {}
+    first_month_visible_days = set()
     cur_y, cur_m = sy, sm
     prev_day_num = None
     for idx, day_num in enumerate(day_numbers_in_sheet):
@@ -3495,9 +3497,17 @@ def admin_export_selected_users_xlsx():
             cur_y, cur_m = add_month(cur_y, cur_m)
         try:
             day_col_map[date(cur_y, cur_m, day_num).isoformat()] = col
+            if cur_y == sy and cur_m == sm and 24 <= day_num <= 31:
+                first_month_visible_days.add(day_num)
         except Exception:
             pass
         prev_day_num = day_num
+
+    # Rapor doneminde olmayan ay sonu gun kolonlarini gizle (24..31 -> G..N).
+    for day_num in range(24, 32):
+        col = 7 + (day_num - 24)
+        letter = get_column_letter(col)
+        ws.column_dimensions[letter].hidden = day_num not in first_month_visible_days
 
     export_rows = []
     for u in users:

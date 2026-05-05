@@ -53,7 +53,11 @@
         </div>
 
         <div class="admin-export-bar" style="justify-content:space-between;">
-            <a href="{{ url_for('admin_users') }}" class="danger-link">İptal</a>
+            <a
+                href="{{ url_for('admin_users') }}"
+                class="success-btn"
+                style="background:#dc3545; color:#fff; text-decoration:none; display:inline-flex; align-items:center; justify-content:center;"
+            >İptal</a>
             <button type="submit" class="success-btn" onclick="return confirm('Seçili personeller için içe aktarma başlatılsın mı?')">İçe Aktar</button>
         </div>
     </form>
