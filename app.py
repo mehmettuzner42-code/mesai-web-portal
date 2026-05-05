@@ -3504,16 +3504,14 @@ def admin_export_selected_users_xlsx():
         prev_day_num = day_num
 
     # Sadece L, M, N (29, 30, 31) icin kosullu gizleme yap.
-    # Mevcut sutun genisligi/stili korunur; sadece hidden bayragi guncellenir.
+    # Kritik: Genisligi bozmamak icin gorunur sutunlara hic dokunma.
+    # Yalnizca gizlenecekse hidden=True uygula.
     for day_num in (29, 30, 31):
+        if day_num in first_month_visible_days:
+            continue
         col = 7 + (day_num - 24)  # 29->L, 30->M, 31->N
         letter = get_column_letter(col)
-        dim = ws.column_dimensions[letter]
-        keep_width = dim.width
-        dim.hidden = day_num not in first_month_visible_days
-        # Hidden disinda genisligi koru (customWidth gibi read-only alanlara dokunma).
-        if keep_width is not None:
-            dim.width = keep_width
+        ws.column_dimensions[letter].hidden = True
 
     export_rows = []
     for u in users:
