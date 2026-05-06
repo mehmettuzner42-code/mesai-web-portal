@@ -2043,6 +2043,19 @@ def admin_users_bulk_entry():
             )
         ]
 
+    selected_filter_daire = (request.values.get("bulk_filter_daire") or "").strip()
+    selected_filter_sube = (request.values.get("bulk_filter_sube") or "").strip()
+    if selected_filter_daire:
+        rows = [
+            r for r in rows
+            if str(((r.get("profile") or UserProfile(user_id=0)).daire_baskanligi or "")).strip() == selected_filter_daire
+        ]
+    if selected_filter_sube:
+        rows = [
+            r for r in rows
+            if str(((r.get("profile") or UserProfile(user_id=0)).sube_mudurlugu or "")).strip() == selected_filter_sube
+        ]
+
     selected_user_ids = {int(v) for v in request.values.getlist("selected_user_ids") if str(v).isdigit()}
     # Guvenlik ve performans: sadece o anki filtreli listede gorunen kullanicilar islenir.
     row_user_id_set = {int((r.get("user") or User()).id or 0) for r in rows}
@@ -2067,7 +2080,15 @@ def admin_users_bulk_entry():
 
     if show_grid and not selected_user_ids:
         flash("Lütfen en az bir kullanıcı seçin.", "error")
-        return redirect(url_for("admin_users_bulk_entry", year=selected_year, period=period_value))
+        return redirect(
+            url_for(
+                "admin_users_bulk_entry",
+                year=selected_year,
+                period=period_value,
+                bulk_filter_daire=selected_filter_daire,
+                bulk_filter_sube=selected_filter_sube,
+            )
+        )
 
     if action == "save":
         try:
@@ -2359,6 +2380,8 @@ def admin_users_bulk_entry():
         day_styles=day_styles,
         input_values=input_values,
         bulk_grid_day_meta=bulk_grid_day_meta,
+        selected_filter_daire=selected_filter_daire,
+        selected_filter_sube=selected_filter_sube,
         format_dmy=format_dmy,
         sort_key=sort_key,
         sort_dir=sort_dir,

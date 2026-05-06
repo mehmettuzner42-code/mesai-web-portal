@@ -13,6 +13,10 @@
     .bulk-entry-fullbleed .table-wrap {
         width: 100%;
     }
+    .bulk-users-section {
+        padding-left: 14px;
+        padding-right: 14px;
+    }
     .bulk-entry-grid-section {
         overflow: visible;
         max-height: none;
@@ -170,6 +174,8 @@
     <form method="post">
         <input type="hidden" name="sort_key" id="bulkSortKey" value="{{ sort_key or '' }}">
         <input type="hidden" name="sort_dir" id="bulkSortDir" value="{{ sort_dir or 'asc' }}">
+        <input type="hidden" name="bulk_filter_daire" id="bulkFilterDaireInput" value="{{ selected_filter_daire or '' }}">
+        <input type="hidden" name="bulk_filter_sube" id="bulkFilterSubeInput" value="{{ selected_filter_sube or '' }}">
         <div class="admin-export-bar" style="margin-top:10px; margin-bottom:10px;">
             <label>Yıl
                 <select name="year" id="bulkYearSelect">
@@ -202,7 +208,8 @@
             {% endif %}
         </div>
 
-        <div class="table-wrap recent-scroll">
+        <div class="bulk-users-section">
+            <div class="table-wrap recent-scroll">
             <table class="compact-table" id="bulkUsersTable">
                 <thead>
                     <tr>
@@ -231,6 +238,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
         </div>
 
         <div class="admin-export-bar" style="margin-top:10px;">
@@ -301,6 +309,8 @@
     const yearSelect = document.getElementById("bulkYearSelect");
     const bulkFilterDaire = document.getElementById("bulkFilterDaire");
     const bulkFilterSube = document.getElementById("bulkFilterSube");
+    const bulkFilterDaireInput = document.getElementById("bulkFilterDaireInput");
+    const bulkFilterSubeInput = document.getElementById("bulkFilterSubeInput");
     if (!table || !selectAll) return;
     function visibleRows() {
         return Array.from(table.querySelectorAll("tbody tr.selectable-row")).filter((tr) => tr.style.display !== "none");
@@ -345,6 +355,8 @@
         if (!bulkFilterDaire || !bulkFilterSube) return;
         const daire = bulkFilterDaire.value;
         const sube = bulkFilterSube.value;
+        if (bulkFilterDaireInput) bulkFilterDaireInput.value = daire;
+        if (bulkFilterSubeInput) bulkFilterSubeInput.value = sube;
         Array.from(table.querySelectorAll("tbody tr.selectable-row")).forEach((tr) => {
             const d = (tr.querySelector(".filter-daire")?.textContent || "").trim();
             const s = (tr.querySelector(".filter-sube")?.textContent || "").trim();
@@ -505,6 +517,12 @@
         });
     }
     refreshFilterOptions();
+    if (bulkFilterDaire && bulkFilterDaireInput) {
+        bulkFilterDaire.value = bulkFilterDaireInput.value || "";
+    }
+    if (bulkFilterSube && bulkFilterSubeInput) {
+        bulkFilterSube.value = bulkFilterSubeInput.value || "";
+    }
     restoreSortState();
     persistSortState();
     if (bulkFilterDaire && bulkFilterSube) {
