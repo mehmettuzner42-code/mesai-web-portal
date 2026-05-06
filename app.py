@@ -2044,6 +2044,9 @@ def admin_users_bulk_entry():
         ]
 
     selected_user_ids = {int(v) for v in request.values.getlist("selected_user_ids") if str(v).isdigit()}
+    # Guvenlik ve performans: sadece o anki filtreli listede gorunen kullanicilar islenir.
+    row_user_id_set = {int((r.get("user") or User()).id or 0) for r in rows}
+    selected_user_ids = {uid for uid in selected_user_ids if uid in row_user_id_set}
     action = (request.values.get("action") or "").strip().lower()
     show_grid = action in ("preview", "save")
 
@@ -2208,6 +2211,8 @@ def admin_users_bulk_entry():
             for r in to_insert:
                 new_by_user.setdefault(int(r.user_id), []).append(r)
 
+            rows_to_delete = []
+            rows_to_add = []
             all_uids = set(old_by_user.keys()) | set(new_by_user.keys())
             for uid in all_uids:
                 olds = old_by_user.get(uid, [])
@@ -2227,6 +2232,7 @@ def admin_users_bulk_entry():
 
                 for sig, cnt in removed.items():
                     for old_row in (old_bucket.get(sig) or [])[:cnt]:
+                        rows_to_delete.append(old_row)
                         write_overtime_audit_log(
                             action="delete",
                             actor_user_id=(login_user.id if login_user else 0),
@@ -2238,6 +2244,7 @@ def admin_users_bulk_entry():
                         )
                 for sig, cnt in added.items():
                     for new_row in (new_bucket.get(sig) or [])[:cnt]:
+                        rows_to_add.append(new_row)
                         write_overtime_audit_log(
                             action="create",
                             actor_user_id=(login_user.id if login_user else 0),
@@ -2248,11 +2255,11 @@ def admin_users_bulk_entry():
                             note="bulk_add_changed_only",
                         )
 
-            # Veriyi donem bazli replace etmeye devam et.
-            for old_row in old_rows:
+            # Sadece degisen satirlari uygula (degismeyenlere dokunma).
+            for old_row in rows_to_delete:
                 db.session.delete(old_row)
-            if to_insert:
-                db.session.add_all(to_insert)
+            if rows_to_add:
+                db.session.add_all(rows_to_add)
             db.session.commit()
             flash("Toplu mesai girişi kaydedildi.", "success")
         except Exception as exc:
@@ -2296,34 +2303,33 @@ def admin_users_bulk_entry():
                 "pazar": float(pazar_val or 0),
                 "bayram": float(bayram_val or 0),
             }
-        for uid in selected_user_ids:
-            for d in day_columns:
-                k = f"cell_{uid}_{d.isoformat()}"
-                rec = first_by_day.get((uid, d.isoformat()))
-                if not rec:
-                    continue
-                pct60 = float(rec.get("pct60", 0) or 0)
-                pazar = float(rec.get("pazar", 0) or 0)
-                bayram = float(rec.get("bayram", 0) or 0)
+        # Sadece mevcut kaydi olan hucreleri doldur; uid x gun carpimiyla bos hucreleri dolasma.
+        for (uid, day_iso), rec in first_by_day.items():
+            if uid not in selected_user_ids:
+                continue
+            k = f"cell_{uid}_{day_iso}"
+            pct60 = float(rec.get("pct60", 0) or 0)
+            pazar = float(rec.get("pazar", 0) or 0)
+            bayram = float(rec.get("bayram", 0) or 0)
 
-                if pazar > 0:
-                    base = _fmt_cell_num(pazar)
-                    if pct60 > 0:
-                        input_values[k] = f"{base}+{_fmt_cell_num(pct60)}"
-                    else:
-                        input_values[k] = base
-                    continue
-
-                if bayram > 0:
-                    base = _fmt_cell_num(bayram)
-                    if pct60 > 0:
-                        input_values[k] = f"{base}+{_fmt_cell_num(pct60)}"
-                    else:
-                        input_values[k] = base
-                    continue
-
+            if pazar > 0:
+                base = _fmt_cell_num(pazar)
                 if pct60 > 0:
-                    input_values[k] = _fmt_cell_num(pct60)
+                    input_values[k] = f"{base}+{_fmt_cell_num(pct60)}"
+                else:
+                    input_values[k] = base
+                continue
+
+            if bayram > 0:
+                base = _fmt_cell_num(bayram)
+                if pct60 > 0:
+                    input_values[k] = f"{base}+{_fmt_cell_num(pct60)}"
+                else:
+                    input_values[k] = base
+                continue
+
+            if pct60 > 0:
+                input_values[k] = _fmt_cell_num(pct60)
 
     bulk_grid_day_meta = []
     if show_grid:

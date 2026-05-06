@@ -350,7 +350,19 @@
             const s = (tr.querySelector(".filter-sube")?.textContent || "").trim();
             const okD = !daire || d === daire;
             const okS = !sube || s === sube;
-            tr.style.display = okD && okS ? "" : "none";
+            const visible = okD && okS;
+            tr.style.display = visible ? "" : "none";
+            const cb = tr.querySelector("input.row-select");
+            if (cb) {
+                if (!visible) {
+                    // Filtre disi personel secili kalmasin; form submit'te gonderilmesin.
+                    cb.checked = false;
+                    cb.disabled = true;
+                } else {
+                    cb.disabled = false;
+                }
+                updateRowHighlight(cb);
+            }
         });
         refreshOrderNumbers();
         updateSelectAll();
