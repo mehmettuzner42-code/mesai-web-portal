@@ -1719,9 +1719,6 @@ def admin_users():
 @admin_or_delegate_required
 def admin_audit_logs():
     login_user = session_login_user()
-    if not delegate_can(login_user, "users"):
-        flash("İşlem kayıtlarını görme yetkiniz yok.", "error")
-        return redirect(url_for("dashboard"))
 
     # Personel ekranındaki yil/donem secimi ile ayni davranis.
     period_pairs = db.session.query(AuditLog.period_start_year, AuditLog.period_start_month).filter(
