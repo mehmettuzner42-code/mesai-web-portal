@@ -36,7 +36,15 @@ main.container {
 .audit-table td {
     padding-left: 10px !important;
     padding-right: 10px !important;
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
+}
+.table-wrap.recent-scroll {
+    width: 100%;
+    overflow-x: auto;
+}
+.audit-table {
+    width: 100%;
 }
 </style>
 <div class="audit-page-bleed">
@@ -136,10 +144,9 @@ main.container {
                     <th>İşlem</th>
                     <th>Yapan</th>
                     <th>Etkilenen</th>
-                    <th>Gün</th>
                     <th>Daire / Şube</th>
                     <th>Kaynak</th>
-                    <th>Açıklama</th>
+                    <th>Gün</th>
                     <th>Önce</th>
                     <th>Sonra</th>
                 </tr>
@@ -155,15 +162,14 @@ main.container {
                     </td>
                     <td>{{ r.actor_label or '-' }}</td>
                     <td>{{ r.target_label or '-' }}</td>
-                    <td>{{ r.work_date.strftime('%d.%m.%Y') if r.work_date else '-' }}</td>
                     <td>{{ r.unit_text }}</td>
                     <td>{{ r.source_tr }}</td>
-                    <td>{{ r.note_tr }}</td>
+                    <td>{{ r.work_date.strftime('%d.%m.%Y') if r.work_date else '-' }}</td>
                     <td>{{ r.before_text }}</td>
                     <td>{{ r.after_text }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="10">Kayıt bulunamadı.</td></tr>
+                <tr><td colspan="9">Kayıt bulunamadı.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
