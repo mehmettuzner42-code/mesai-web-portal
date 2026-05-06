@@ -84,6 +84,7 @@ _FOUNDER_ID_CACHE = {"value": None, "expires_at": 0.0}
 _DELEGATE_VIEW_CACHE = {}
 # Yetkili kullanici agir HTML sayfalarinda tekrar tekrar tam render maliyetini azaltir (cok islemci = kisa TTL).
 _DELEGATE_VIEW_CACHE_TTL_SEC = 180.0
+_AUDIT_TABLE_READY_CACHE = {"value": None, "checked_at": 0.0}
 
 _RQ_USER_CACHE_UNSET = object()
 DAIRE_OPTIONS = ["Abone İşleri Dairesi Başkanlığı"]
@@ -276,6 +277,30 @@ def _user_label_for(uid: int) -> str:
     return str(name).strip() if str(name).strip() else str(u.email or f"#{uid}")
 
 
+def _is_audit_table_ready() -> bool:
+    now = time.monotonic()
+    cached = _AUDIT_TABLE_READY_CACHE.get("value")
+    checked_at = float(_AUDIT_TABLE_READY_CACHE.get("checked_at") or 0.0)
+    if cached is not None and (now - checked_at) < 30.0:
+        return bool(cached)
+    try:
+        inspector = db.inspect(db.engine)
+        if not inspector.has_table("audit_log"):
+            _AUDIT_TABLE_READY_CACHE["value"] = False
+            _AUDIT_TABLE_READY_CACHE["checked_at"] = now
+            return False
+        cols = {c["name"] for c in inspector.get_columns("audit_log")}
+        required = {"event_time", "actor_user_id", "target_user_id", "action", "source", "old_data_json", "new_data_json"}
+        ready = required.issubset(cols)
+        _AUDIT_TABLE_READY_CACHE["value"] = bool(ready)
+        _AUDIT_TABLE_READY_CACHE["checked_at"] = now
+        return bool(ready)
+    except Exception:
+        _AUDIT_TABLE_READY_CACHE["value"] = False
+        _AUDIT_TABLE_READY_CACHE["checked_at"] = now
+        return False
+
+
 def write_overtime_audit_log(
     *,
     action: str,
@@ -287,6 +312,8 @@ def write_overtime_audit_log(
     note: str = "",
 ):
     try:
+        if not _is_audit_table_ready():
+            return
         chosen = new_entry or old_entry
         wd = chosen.work_date if chosen else None
         ps = period_start_for_date(wd) if wd else None
@@ -315,6 +342,8 @@ def write_overtime_audit_log(
         )
         db.session.add(log)
     except Exception:
+        _AUDIT_TABLE_READY_CACHE["value"] = False
+        _AUDIT_TABLE_READY_CACHE["checked_at"] = time.monotonic()
         # Audit failure should not block core transaction.
         pass
 
