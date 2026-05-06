@@ -5195,6 +5195,24 @@ def api_profile_get():
     })
 
 
+@app.get("/api/period-lock-status")
+@api_auth_required
+def api_period_lock_status():
+    user = request.api_user
+    work_date_raw = (request.args.get("workDate") or "").strip()
+    if not work_date_raw:
+        return jsonify({"error": "missing_work_date"}), 400
+    try:
+        wd = parse_date(work_date_raw)
+    except Exception:
+        return jsonify({"error": "invalid_work_date"}), 400
+    return jsonify({
+        "workDate": wd.isoformat(),
+        "locked": bool(is_period_locked(wd)),
+        "canBypass": bool(can_bypass_period_lock(user)),
+    })
+
+
 @app.put("/api/profile")
 @api_auth_required
 def api_profile_put():
