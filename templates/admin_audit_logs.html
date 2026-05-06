@@ -16,6 +16,19 @@ main.container {
     margin-left: 0;
     margin-right: 0;
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+.audit-page-bleed *,
+.audit-page-bleed *::before,
+.audit-page-bleed *::after {
+    box-sizing: border-box;
+}
+.audit-page-bleed .header-row,
+.audit-page-bleed .card {
+    width: 100%;
+    max-width: 100%;
 }
 .audit-action-badge {
     display: inline-flex;
@@ -41,10 +54,12 @@ main.container {
 }
 .table-wrap.recent-scroll {
     width: 100%;
+    max-width: 100%;
     overflow-x: auto;
 }
 .audit-table {
-    width: 100%;
+    width: 100% !important;
+    table-layout: fixed;
 }
 </style>
 <div class="audit-page-bleed">
@@ -54,7 +69,7 @@ main.container {
     </div>
 
 <div class="card" style="margin-left:0; margin-right:0;">
-    <form method="get" class="admin-filter-bar" style="margin-bottom:12px; display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:10px;">
+    <form method="get" class="admin-filter-bar" style="margin-bottom:12px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; width:100%; max-width:100%;">
         <label>İşlem Yapan
             <select name="actor_user_id">
                 <option value="">Tümü</option>
