@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="header-row">
+    <h2>İşlem Kayıtları (Audit)</h2>
+    <a class="button-link" href="{{ url_for('admin_users') }}">Personele Dön</a>
+</div>
+
+<div class="card">
+    <form method="get" class="admin-filter-bar" style="margin-bottom:12px; display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:10px;">
+        <label>İşlem Yapan
+            <select name="actor_user_id">
+                <option value="">Tümü</option>
+                {% for u in users %}
+                {% set p = profiles.get(u.id) %}
+                {% set lbl = (p.ad_soyad if p else '') or u.email %}
+                <option value="{{ u.id }}" {% if selected.actor_user_id and selected.actor_user_id == u.id %}selected{% endif %}>{{ lbl }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Etkilenen Kullanıcı
+            <select name="target_user_id">
+                <option value="">Tümü</option>
+                {% for u in users %}
+                {% set p = profiles.get(u.id) %}
+                {% set lbl = (p.ad_soyad if p else '') or u.email %}
+                <option value="{{ u.id }}" {% if selected.target_user_id and selected.target_user_id == u.id %}selected{% endif %}>{{ lbl }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>İşlem Türü
+            <select name="action">
+                <option value="">Tümü</option>
+                <option value="create" {% if selected.action == 'create' %}selected{% endif %}>Ekleme</option>
+                <option value="update" {% if selected.action == 'update' %}selected{% endif %}>Güncelleme</option>
+                <option value="delete" {% if selected.action == 'delete' %}selected{% endif %}>Silme</option>
+            </select>
+        </label>
+        <label>Gün
+            <input type="date" name="day" value="{{ selected.day }}">
+        </label>
+        <label>Yıl
+            <input type="number" name="year" min="2020" max="2100" value="{{ selected.year }}">
+        </label>
+        <label>Dönem Ayı
+            <select name="period">
+                <option value="">Tümü</option>
+                {% for m in range(1,13) %}
+                <option value="{{ m }}" {% if selected.period and selected.period|int == m %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Daire Başkanlığı
+            <select name="daire">
+                <option value="">Tümü</option>
+                {% for d in daire_options %}
+                <option value="{{ d }}" {% if selected.daire == d %}selected{% endif %}>{{ d }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Şube Müdürlüğü
+            <select name="sube">
+                <option value="">Tümü</option>
+                {% for s in sube_options %}
+                <option value="{{ s }}" {% if selected.sube == s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <div style="display:flex; gap:8px; align-items:flex-end;">
+            <button type="submit" class="success-btn">Filtrele</button>
+            <a href="{{ url_for('admin_audit_logs') }}" class="danger-link">Temizle</a>
+        </div>
+    </form>
+
+    <div class="table-wrap recent-scroll">
+        <table class="compact-table">
+            <thead>
+                <tr>
+                    <th>Zaman</th>
+                    <th>İşlem</th>
+                    <th>Yapan</th>
+                    <th>Etkilenen</th>
+                    <th>Gün</th>
+                    <th>Daire / Şube</th>
+                    <th>Kaynak</th>
+                    <th>Not</th>
+                    <th>Önce</th>
+                    <th>Sonra</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.event_time.strftime('%d.%m.%Y %H:%M:%S') if r.event_time else '-' }}</td>
+                    <td>{{ r.action }}</td>
+                    <td>{{ r.actor_label or '-' }}</td>
+                    <td>{{ r.target_label or '-' }}</td>
+                    <td>{{ r.work_date.strftime('%d.%m.%Y') if r.work_date else '-' }}</td>
+                    <td>{{ (r.daire_baskanligi or '-') ~ ' / ' ~ (r.sube_mudurlugu or '-') }}</td>
+                    <td>{{ r.source or '-' }}</td>
+                    <td>{{ r.note or '-' }}</td>
+                    <td><code>{{ r.old_data_json }}</code></td>
+                    <td><code>{{ r.new_data_json }}</code></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="10">Kayıt bulunamadı.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
