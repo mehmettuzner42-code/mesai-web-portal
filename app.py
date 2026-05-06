@@ -134,6 +134,26 @@ class OvertimeEntry(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class AuditLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    event_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    actor_user_id = db.Column(db.Integer, nullable=True, index=True)
+    actor_label = db.Column(db.String(255), default="", nullable=False)
+    target_user_id = db.Column(db.Integer, nullable=True, index=True)
+    target_label = db.Column(db.String(255), default="", nullable=False)
+    action = db.Column(db.String(20), default="", nullable=False, index=True)  # create/update/delete
+    source = db.Column(db.String(40), default="", nullable=False, index=True)  # web/apk/bulk/import/backup
+    work_date = db.Column(db.Date, nullable=True, index=True)
+    period_start_year = db.Column(db.Integer, nullable=True, index=True)
+    period_start_month = db.Column(db.Integer, nullable=True, index=True)
+    daire_baskanligi = db.Column(db.String(255), default="", nullable=False, index=True)
+    sube_mudurlugu = db.Column(db.String(255), default="", nullable=False, index=True)
+    old_data_json = db.Column(db.Text, default="{}", nullable=False)
+    new_data_json = db.Column(db.Text, default="{}", nullable=False)
+    note = db.Column(db.String(255), default="", nullable=False)
+    ip_address = db.Column(db.String(64), default="", nullable=False)
+
+
 class AppSetting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     setting_key = db.Column(db.String(120), unique=True, nullable=False, index=True)
@@ -224,6 +244,78 @@ def format_dmy(d: date) -> str:
 def weekday_tr(d: date) -> str:
     names = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"]
     return names[d.weekday()]
+
+
+def overtime_entry_payload(entry: OvertimeEntry):
+    if not entry:
+        return {}
+    wd = entry.work_date.isoformat() if entry.work_date else ""
+    return {
+        "id": int(entry.id or 0),
+        "user_id": int(entry.user_id or 0),
+        "work_date": wd,
+        "start_time": str(entry.start_time or ""),
+        "end_time": str(entry.end_time or ""),
+        "pct60": float(entry.pct60 or 0),
+        "pct15": float(entry.pct15 or 0),
+        "pazar": float(entry.pazar or 0),
+        "bayram": float(entry.bayram or 0),
+        "description": str(entry.description or ""),
+    }
+
+
+def _user_label_for(uid: int) -> str:
+    if not uid:
+        return ""
+    u = User.query.get(int(uid))
+    if not u:
+        return f"#{uid}"
+    p = UserProfile.query.filter_by(user_id=u.id).first()
+    name = (p.ad_soyad if p else "") or ""
+    return f"{name} ({u.email})" if name else str(u.email or f"#{uid}")
+
+
+def write_overtime_audit_log(
+    *,
+    action: str,
+    actor_user_id: int,
+    target_user_id: int,
+    old_entry: OvertimeEntry = None,
+    new_entry: OvertimeEntry = None,
+    source: str = "web",
+    note: str = "",
+):
+    try:
+        chosen = new_entry or old_entry
+        wd = chosen.work_date if chosen else None
+        ps = period_start_for_date(wd) if wd else None
+        profile = UserProfile.query.filter_by(user_id=int(target_user_id or 0)).first() if target_user_id else None
+        actor_label = _user_label_for(int(actor_user_id or 0)) if actor_user_id else "Sistem"
+        target_label = _user_label_for(int(target_user_id or 0)) if target_user_id else ""
+        ip = ""
+        if has_request_context():
+            ip = str(request.headers.get("X-Forwarded-For", "") or request.remote_addr or "").split(",")[0].strip()
+        log = AuditLog(
+            actor_user_id=int(actor_user_id or 0) or None,
+            actor_label=actor_label,
+            target_user_id=int(target_user_id or 0) or None,
+            target_label=target_label,
+            action=str(action or "").strip().lower(),
+            source=str(source or "").strip().lower(),
+            work_date=wd,
+            period_start_year=(ps.year if ps else None),
+            period_start_month=(ps.month if ps else None),
+            daire_baskanligi=str((profile.daire_baskanligi if profile else "") or ""),
+            sube_mudurlugu=str((profile.sube_mudurlugu if profile else "") or ""),
+            old_data_json=json.dumps(overtime_entry_payload(old_entry), ensure_ascii=False),
+            new_data_json=json.dumps(overtime_entry_payload(new_entry), ensure_ascii=False),
+            note=str(note or ""),
+            ip_address=ip,
+        )
+        db.session.add(log)
+    except Exception:
+        # Audit failure should not block core transaction.
+        pass
 
 
 def hhmm_to_minutes(hhmm: str):
@@ -1591,6 +1683,76 @@ def admin_users():
     return html
 
 
+@app.get("/admin/audit-logs")
+@login_required
+@admin_or_delegate_required
+def admin_audit_logs():
+    login_user = session_login_user()
+    if not delegate_can(login_user, "users"):
+        flash("İşlem kayıtlarını görme yetkiniz yok.", "error")
+        return redirect(url_for("dashboard"))
+
+    year = request.args.get("year", type=int)
+    period = (request.args.get("period") or "").strip()
+    day = (request.args.get("day") or "").strip()
+    actor_user_id = request.args.get("actor_user_id", type=int)
+    target_user_id = request.args.get("target_user_id", type=int)
+    action = (request.args.get("action") or "").strip().lower()
+    daire = (request.args.get("daire") or "").strip()
+    sube = (request.args.get("sube") or "").strip()
+
+    q = AuditLog.query.order_by(AuditLog.event_time.desc(), AuditLog.id.desc())
+    if actor_user_id:
+        q = q.filter(AuditLog.actor_user_id == actor_user_id)
+    if target_user_id:
+        q = q.filter(AuditLog.target_user_id == target_user_id)
+    if action in {"create", "update", "delete"}:
+        q = q.filter(AuditLog.action == action)
+    if daire:
+        q = q.filter(AuditLog.daire_baskanligi == daire)
+    if sube:
+        q = q.filter(AuditLog.sube_mudurlugu == sube)
+    if day:
+        try:
+            d = parse_date(day)
+            q = q.filter(AuditLog.work_date == d)
+        except Exception:
+            pass
+    if year:
+        q = q.filter(AuditLog.period_start_year == year)
+    if period:
+        try:
+            p = int(period)
+            if 1 <= p <= 12:
+                q = q.filter(AuditLog.period_start_month == p)
+        except Exception:
+            pass
+
+    rows = q.limit(2000).all()
+    users = User.query.order_by(User.email.asc()).all()
+    profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_([u.id for u in users] or [0])).all()}
+    daire_options = sorted({(p.daire_baskanligi or "").strip() for p in profiles.values() if (p.daire_baskanligi or "").strip()})
+    sube_options = sorted({(p.sube_mudurlugu or "").strip() for p in profiles.values() if (p.sube_mudurlugu or "").strip()})
+    return render_template(
+        "admin_audit_logs.html",
+        rows=rows,
+        users=users,
+        profiles=profiles,
+        selected={
+            "year": year or "",
+            "period": period,
+            "day": day,
+            "actor_user_id": actor_user_id or "",
+            "target_user_id": target_user_id or "",
+            "action": action,
+            "daire": daire,
+            "sube": sube,
+        },
+        daire_options=daire_options,
+        sube_options=sube_options,
+    )
+
+
 @app.route("/admin/users/bulk-entry", methods=["GET", "POST"])
 @login_required
 @admin_or_delegate_required
@@ -1722,11 +1884,22 @@ def admin_users_bulk_entry():
 
     if action == "save":
         try:
-            OvertimeEntry.query.filter(
+            old_rows = OvertimeEntry.query.filter(
                 OvertimeEntry.user_id.in_(list(selected_user_ids)),
                 OvertimeEntry.work_date >= p_start,
                 OvertimeEntry.work_date <= p_end,
-            ).delete(synchronize_session=False)
+            ).all()
+            for old_row in old_rows:
+                write_overtime_audit_log(
+                    action="delete",
+                    actor_user_id=(login_user.id if login_user else 0),
+                    target_user_id=old_row.user_id,
+                    old_entry=old_row,
+                    new_entry=None,
+                    source="bulk",
+                    note="bulk_replace_period",
+                )
+                db.session.delete(old_row)
             to_insert = []
             # Tum matrisi (kullanici x gun) dolasmak yerine sadece gelen dolu hucreleri isle.
             selected_uid_set = {int(x) for x in selected_user_ids}
@@ -1843,7 +2016,18 @@ def admin_users_bulk_entry():
                     )
                 )
             if to_insert:
-                db.session.bulk_save_objects(to_insert)
+                db.session.add_all(to_insert)
+                db.session.flush()
+                for row in to_insert:
+                    write_overtime_audit_log(
+                        action="create",
+                        actor_user_id=(login_user.id if login_user else 0),
+                        target_user_id=row.user_id,
+                        old_entry=None,
+                        new_entry=row,
+                        source="bulk",
+                        note="bulk_add",
+                    )
             db.session.commit()
             flash("Toplu mesai girişi kaydedildi.", "success")
         except Exception as exc:
@@ -2256,22 +2440,42 @@ def admin_backup_import():
                     parse_date(str(p.get("employment_end_date", ""))) if str(p.get("employment_end_date", "")).strip() else None
                 )
 
-            OvertimeEntry.query.filter(OvertimeEntry.user_id.in_(list(selected_id_set) or [0])).delete(synchronize_session=False)
+            actor_user = session_login_user()
+            old_rows = OvertimeEntry.query.filter(OvertimeEntry.user_id.in_(list(selected_id_set) or [0])).all()
+            for old_row in old_rows:
+                write_overtime_audit_log(
+                    action="delete",
+                    actor_user_id=(actor_user.id if actor_user else 0),
+                    target_user_id=old_row.user_id,
+                    old_entry=old_row,
+                    new_entry=None,
+                    source="backup",
+                    note="backup_import_selected_replace",
+                )
+                db.session.delete(old_row)
             for e in payload_entries:
-                db.session.add(
-                    OvertimeEntry(
-                        user_id=int(e.get("user_id")),
-                        work_date=parse_date(str(e.get("work_date", ""))),
-                        start_time=str(e.get("start_time", "")),
-                        end_time=str(e.get("end_time", "")),
-                        pct60=float(e.get("pct60", 0) or 0),
-                        pct15=float(e.get("pct15", 0) or 0),
-                        pazar=float(e.get("pazar", 0) or 0),
-                        bayram=float(e.get("bayram", 0) or 0),
-                        description=str(e.get("description", "")),
-                        created_at=parse_dt(e.get("created_at")) or datetime.utcnow(),
-                        updated_at=parse_dt(e.get("updated_at")) or datetime.utcnow(),
-                    )
+                row = OvertimeEntry(
+                    user_id=int(e.get("user_id")),
+                    work_date=parse_date(str(e.get("work_date", ""))),
+                    start_time=str(e.get("start_time", "")),
+                    end_time=str(e.get("end_time", "")),
+                    pct60=float(e.get("pct60", 0) or 0),
+                    pct15=float(e.get("pct15", 0) or 0),
+                    pazar=float(e.get("pazar", 0) or 0),
+                    bayram=float(e.get("bayram", 0) or 0),
+                    description=str(e.get("description", "")),
+                    created_at=parse_dt(e.get("created_at")) or datetime.utcnow(),
+                    updated_at=parse_dt(e.get("updated_at")) or datetime.utcnow(),
+                )
+                db.session.add(row)
+                write_overtime_audit_log(
+                    action="create",
+                    actor_user_id=(actor_user.id if actor_user else 0),
+                    target_user_id=row.user_id,
+                    old_entry=None,
+                    new_entry=row,
+                    source="backup",
+                    note="backup_import_selected_add",
                 )
 
             db.session.commit()
@@ -3920,13 +4124,36 @@ def admin_import_period_excel():
         return redirect(url_for("admin_import_period_excel"))
 
     p_start, p_end = period_for_start(sy, sm)
-    OvertimeEntry.query.filter(
+    old_period_rows = OvertimeEntry.query.filter(
         OvertimeEntry.user_id.in_(list(matched_user_ids)),
         OvertimeEntry.work_date >= p_start,
         OvertimeEntry.work_date <= p_end,
-    ).delete(synchronize_session=False)
+    ).all()
+    actor_user = session_login_user()
+    for old_row in old_period_rows:
+        write_overtime_audit_log(
+            action="delete",
+            actor_user_id=(actor_user.id if actor_user else 0),
+            target_user_id=old_row.user_id,
+            old_entry=old_row,
+            new_entry=None,
+            source="import",
+            note="excel_import_replace_period",
+        )
+        db.session.delete(old_row)
     if to_insert:
         db.session.add_all(to_insert)
+        db.session.flush()
+        for row in to_insert:
+            write_overtime_audit_log(
+                action="create",
+                actor_user_id=(actor_user.id if actor_user else 0),
+                target_user_id=row.user_id,
+                old_entry=None,
+                new_entry=row,
+                source="import",
+                note="excel_import_add",
+            )
     db.session.commit()
     flash(
         f"İçe aktarma tamamlandı. {len(matched_user_ids)} kullanıcı için {rows_added} kayıt işlendi."
@@ -3956,11 +4183,24 @@ def admin_delete_period_all():
         flash("Dönem formatı hatalı.", "error")
         return redirect(url_for("admin_users"))
     p_start, p_end = period_for_start(sy, sm)
-    deleted = OvertimeEntry.query.filter(
+    actor_user = session_login_user()
+    rows_to_delete = OvertimeEntry.query.filter(
         OvertimeEntry.user_id.in_(selected_ids),
         OvertimeEntry.work_date >= p_start,
         OvertimeEntry.work_date <= p_end,
-    ).delete(synchronize_session=False)
+    ).all()
+    for row in rows_to_delete:
+        write_overtime_audit_log(
+            action="delete",
+            actor_user_id=(actor_user.id if actor_user else 0),
+            target_user_id=row.user_id,
+            old_entry=row,
+            new_entry=None,
+            source="admin",
+            note="period_delete_selected_users",
+        )
+        db.session.delete(row)
+    deleted = len(rows_to_delete)
     db.session.commit()
     flash(f"Seçilen personeller için seçilen dönemde toplam {deleted} kayıt silindi.", "success")
     return redirect(url_for("admin_users"))
@@ -4158,6 +4398,15 @@ def dashboard():
                 flash("Bu dönem kilitli. Mesai girişi yapılamaz.", "error")
                 return redirect(url_for("dashboard"))
             db.session.add(entry)
+            write_overtime_audit_log(
+                action="create",
+                actor_user_id=(login_user.id if login_user else user.id),
+                target_user_id=user.id,
+                old_entry=None,
+                new_entry=entry,
+                source="web",
+                note="dashboard_add",
+            )
             db.session.commit()
             flash("Mesai kaydı eklendi.", "success")
         except Exception as exc:
@@ -4187,6 +4436,18 @@ def edit_entry(entry_id: int):
     entry = OvertimeEntry.query.filter_by(id=entry_id, user_id=user.id).first_or_404()
     if request.method == "POST":
         try:
+            old_snapshot = OvertimeEntry(
+                id=entry.id,
+                user_id=entry.user_id,
+                work_date=entry.work_date,
+                start_time=entry.start_time,
+                end_time=entry.end_time,
+                pct60=entry.pct60,
+                pct15=entry.pct15,
+                pazar=entry.pazar,
+                bayram=entry.bayram,
+                description=entry.description,
+            )
             new_work_date = parse_date(request.form.get("work_date", ""))
             if (
                 (is_period_locked(entry.work_date) or is_period_locked(new_work_date))
@@ -4213,8 +4474,26 @@ def edit_entry(entry_id: int):
                 OvertimeEntry.id != entry.id,
             ).all()
             for d in duplicates:
+                write_overtime_audit_log(
+                    action="delete",
+                    actor_user_id=(login_user.id if login_user else user.id),
+                    target_user_id=user.id,
+                    old_entry=d,
+                    new_entry=None,
+                    source="web",
+                    note="duplicate_cleanup",
+                )
                 db.session.delete(d)
 
+            write_overtime_audit_log(
+                action="update",
+                actor_user_id=(login_user.id if login_user else user.id),
+                target_user_id=user.id,
+                old_entry=old_snapshot,
+                new_entry=entry,
+                source="web",
+                note="entry_edit",
+            )
             db.session.commit()
             if duplicates:
                 flash(f"Kayıt güncellendi. {len(duplicates)} mükerrer kayıt temizlendi.", "success")
@@ -4240,6 +4519,15 @@ def delete_entry(entry_id: int):
     if is_period_locked(entry.work_date) and not can_bypass_period_lock(login_user):
         flash("Bu dönem kilitli. Silme işlemi yapılamaz.", "error")
         return redirect(url_for("dashboard"))
+    write_overtime_audit_log(
+        action="delete",
+        actor_user_id=(login_user.id if login_user else user.id),
+        target_user_id=user.id,
+        old_entry=entry,
+        new_entry=None,
+        source="web",
+        note="entry_delete",
+    )
     db.session.delete(entry)
     db.session.commit()
     flash("Kayıt silindi.", "success")
@@ -4747,6 +5035,15 @@ def api_create_entry():
             description=str(data.get("description", "")),
         )
         db.session.add(entry)
+        write_overtime_audit_log(
+            action="create",
+            actor_user_id=user.id,
+            target_user_id=user.id,
+            old_entry=None,
+            new_entry=entry,
+            source="apk",
+            note="api_create",
+        )
         db.session.commit()
         return jsonify(entry_to_dict(entry)), 201
     except Exception as exc:
@@ -4763,6 +5060,18 @@ def api_update_entry(entry_id: int):
     if not entry:
         return jsonify({"error": "not_found"}), 404
     try:
+        old_snapshot = OvertimeEntry(
+            id=entry.id,
+            user_id=entry.user_id,
+            work_date=entry.work_date,
+            start_time=entry.start_time,
+            end_time=entry.end_time,
+            pct60=entry.pct60,
+            pct15=entry.pct15,
+            pazar=entry.pazar,
+            bayram=entry.bayram,
+            description=entry.description,
+        )
         new_work_date = parse_date(str(data.get("workDate", entry.work_date.isoformat())))
         if (is_period_locked(entry.work_date) or is_period_locked(new_work_date)) and not can_bypass_period_lock(user):
             return jsonify({"error": "period_locked"}), 423
@@ -4774,6 +5083,15 @@ def api_update_entry(entry_id: int):
         entry.pazar = float(data.get("pazar", entry.pazar))
         entry.bayram = float(data.get("bayram", entry.bayram))
         entry.description = str(data.get("description", entry.description))
+        write_overtime_audit_log(
+            action="update",
+            actor_user_id=user.id,
+            target_user_id=user.id,
+            old_entry=old_snapshot,
+            new_entry=entry,
+            source="apk",
+            note="api_update",
+        )
         db.session.commit()
         return jsonify(entry_to_dict(entry))
     except Exception as exc:
@@ -4790,6 +5108,15 @@ def api_delete_entry(entry_id: int):
         return jsonify({"error": "not_found"}), 404
     if is_period_locked(entry.work_date) and not can_bypass_period_lock(user):
         return jsonify({"error": "period_locked"}), 423
+    write_overtime_audit_log(
+        action="delete",
+        actor_user_id=user.id,
+        target_user_id=user.id,
+        old_entry=entry,
+        new_entry=None,
+        source="apk",
+        note="api_delete",
+    )
     db.session.delete(entry)
     db.session.commit()
     return jsonify({"ok": True})
@@ -4880,6 +5207,10 @@ def ensure_performance_indexes():
     try:
         db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_overtime_user_date ON overtime_entry (user_id, work_date)"))
         db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_unit_change_user_date ON unit_change (user_id, transfer_date)"))
+        db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_log (event_time)"))
+        db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_audit_actor_time ON audit_log (actor_user_id, event_time)"))
+        db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_audit_target_time ON audit_log (target_user_id, event_time)"))
+        db.session.execute(db.text("CREATE INDEX IF NOT EXISTS idx_audit_period ON audit_log (period_start_year, period_start_month)"))
         db.session.commit()
     except Exception:
         db.session.rollback()
