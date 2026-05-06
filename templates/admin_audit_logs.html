@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
+main.container {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+}
 .audit-clear-btn {
     background: #dc3545 !important;
     color: #fff !important;
@@ -26,6 +32,12 @@
 .audit-action-create { background: #16a34a; }
 .audit-action-update { background: #f59e0b; }
 .audit-action-delete { background: #dc2626; }
+.audit-table th,
+.audit-table td {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    white-space: nowrap;
+}
 </style>
 <div class="audit-page-bleed">
     <div class="header-row">
@@ -68,6 +80,7 @@
         </label>
         <label>Yıl
             <select name="year" id="auditYearSelect">
+                <option value="">Tümü</option>
                 {% for y in years %}
                 <option value="{{ y }}" {% if selected.year and selected.year|int == y %}selected{% endif %}>{{ y }}</option>
                 {% endfor %}
@@ -75,6 +88,7 @@
         </label>
         <label>Dönem
             <select name="period">
+                <option value="">Tümü</option>
                 {% for sy, sm in period_options %}
                 {% set em = 1 if sm == 12 else sm + 1 %}
                 <option value="{{ sy }}-{{ '%02d'|format(sm) }}" {% if selected.period == (sy ~ '-' ~ ('%02d'|format(sm))) %}selected{% endif %}>
@@ -106,7 +120,7 @@
     </form>
 
     <div class="table-wrap recent-scroll">
-        <table class="compact-table">
+        <table class="compact-table audit-table">
             <thead>
                 <tr>
                     <th>Zaman</th>

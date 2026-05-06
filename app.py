@@ -1707,13 +1707,11 @@ def admin_audit_logs():
         ps0 = period_start_for_date(date.today())
         start_options = [(ps0.year, ps0.month)]
     years = sorted({period_year(y, m) for (y, m) in start_options}, reverse=True)
-    default_year = years[0]
-    year = request.args.get("year", type=int) or default_year
-    if year not in years:
-        year = default_year
-    period_options = [(y, m) for (y, m) in start_options if period_year(y, m) == year] or [start_options[0]]
+    year_raw = (request.args.get("year") or "").strip()
+    year = int(year_raw) if year_raw.isdigit() and int(year_raw) in years else None
+    period_options = [(y, m) for (y, m) in start_options if (year is None or period_year(y, m) == year)] or list(start_options)
     period = (request.args.get("period") or "").strip()
-    active_start = period_options[0]
+    active_start = None
     if period and "-" in period:
         try:
             sy, sm = (int(x) for x in period.split("-"))
@@ -1721,7 +1719,7 @@ def admin_audit_logs():
                 active_start = (sy, sm)
         except Exception:
             pass
-    period_value = f"{active_start[0]:04d}-{active_start[1]:02d}"
+    period_value = f"{active_start[0]:04d}-{active_start[1]:02d}" if active_start else ""
 
     day = (request.args.get("day") or "").strip()
     actor_user_id = request.args.get("actor_user_id", type=int)
@@ -1747,10 +1745,19 @@ def admin_audit_logs():
             q = q.filter(AuditLog.work_date == d)
         except Exception:
             pass
-    q = q.filter(
-        AuditLog.period_start_year == active_start[0],
-        AuditLog.period_start_month == active_start[1],
-    )
+    if active_start:
+        q = q.filter(
+            AuditLog.period_start_year == active_start[0],
+            AuditLog.period_start_month == active_start[1],
+        )
+    elif year is not None:
+        candidate_pairs = [(y, m) for (y, m) in start_options if period_year(y, m) == year]
+        if candidate_pairs:
+            cond = db.or_(*[
+                db.and_(AuditLog.period_start_year == y, AuditLog.period_start_month == m)
+                for (y, m) in candidate_pairs
+            ])
+            q = q.filter(cond)
 
     raw_rows = q.limit(2000).all()
     field_labels = {
