@@ -1886,7 +1886,55 @@ def admin_audit_logs():
         period_options=period_options,
         daire_options=daire_options,
         sube_options=sube_options,
+        can_audit_clear=bool(is_founder_user(login_user)),
     )
+
+
+@app.post("/admin/audit-logs/clear")
+@login_required
+@admin_required
+def admin_audit_logs_clear():
+    actor_user_id = request.form.get("actor_user_id", type=int)
+    target_user_id = request.form.get("target_user_id", type=int)
+    action = (request.form.get("action") or "").strip().lower()
+    day = (request.form.get("day") or "").strip()
+    daire = (request.form.get("daire") or "").strip()
+    sube = (request.form.get("sube") or "").strip()
+    year_raw = (request.form.get("year") or "").strip()
+    period_raw = (request.form.get("period") or "").strip()
+
+    q = AuditLog.query
+    if actor_user_id:
+        q = q.filter(AuditLog.actor_user_id == actor_user_id)
+    if target_user_id:
+        q = q.filter(AuditLog.target_user_id == target_user_id)
+    if action in {"create", "update", "delete"}:
+        q = q.filter(AuditLog.action == action)
+    if daire:
+        q = q.filter(AuditLog.daire_baskanligi == daire)
+    if sube:
+        q = q.filter(AuditLog.sube_mudurlugu == sube)
+    if day:
+        try:
+            q = q.filter(AuditLog.work_date == parse_date(day))
+        except Exception:
+            pass
+    if period_raw and "-" in period_raw:
+        try:
+            sy, sm = (int(x) for x in period_raw.split("-"))
+            q = q.filter(
+                AuditLog.period_start_year == sy,
+                AuditLog.period_start_month == sm,
+            )
+        except Exception:
+            pass
+    elif year_raw.isdigit():
+        q = q.filter(AuditLog.period_start_year == int(year_raw))
+
+    deleted = q.delete(synchronize_session=False)
+    db.session.commit()
+    flash(f"Audit kayıtlarından {deleted} satır silindi.", "success")
+    return redirect(url_for("admin_audit_logs"))
 
 
 @app.route("/admin/users/bulk-entry", methods=["GET", "POST"])

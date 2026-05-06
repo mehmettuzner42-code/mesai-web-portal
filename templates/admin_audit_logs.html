@@ -116,6 +116,15 @@ main.container {
         <div style="display:flex; gap:8px; align-items:flex-end;">
             <button type="submit" class="success-btn">Filtrele</button>
             <button type="button" class="success-btn audit-clear-btn" onclick="window.location.href='{{ url_for('admin_audit_logs') }}'">Temizle</button>
+            {% if can_audit_clear %}
+            <button
+                type="submit"
+                class="success-btn audit-clear-btn"
+                formaction="{{ url_for('admin_audit_logs_clear') }}"
+                formmethod="post"
+                onclick="if(!confirm('Bu filtreye uyan audit kayıtları silinsin mi? Bu işlem geri alınamaz.')) return false; const v = (prompt('Onay için SİL yazın:') || '').trim().toUpperCase(); return v === 'SİL' || v === 'SIL';"
+            >Audit Temizle</button>
+            {% endif %}
         </div>
     </form>
 
