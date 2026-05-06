@@ -1677,6 +1677,7 @@ def admin_users():
         period_options=period_options,
         period_value=f"{active_start[0]:04d}-{active_start[1]:02d}",
         sign_fields=sign_fields,
+        has_audit_logs_route=bool("admin_audit_logs" in app.view_functions),
     )
     if login_user and (not is_founder_user(login_user)):
         set_delegate_view_cache("admin_users", int(login_user.id), html)

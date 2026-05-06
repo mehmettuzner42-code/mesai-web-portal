@@ -59,7 +59,7 @@
                 <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9M8 13l4 4 4-4"/><path d="M5 3h14"/></svg></span>
                 <span class="admin-sidebar-btn__text">Yedek İçe</span>
         </a>
-        {% if 'admin_audit_logs' in current_app.view_functions %}
+        {% if has_audit_logs_route %}
         <a class="admin-sidebar-btn admin-sidebar-btn--charts" href="{{ url_for('admin_audit_logs') }}">
             <span class="admin-sidebar-btn__icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6M4 7h16M6 7v14h12V7M9 11h6M9 15h6"/></svg></span>
             <span class="admin-sidebar-btn__text">İşlem Kayıtları</span>
