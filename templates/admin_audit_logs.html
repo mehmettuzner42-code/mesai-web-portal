@@ -39,6 +39,10 @@ main.container {
     white-space: normal;
     word-break: break-word;
 }
+.audit-list-section {
+    padding-left: 14px;
+    padding-right: 14px;
+}
 .table-wrap.recent-scroll {
     width: 100%;
     overflow-x: auto;
@@ -136,6 +140,7 @@ main.container {
         </div>
     </form>
 
+    <div class="audit-list-section">
     <div class="table-wrap recent-scroll">
         <table class="compact-table audit-table">
             <thead>
@@ -173,6 +178,7 @@ main.container {
                 {% endfor %}
             </tbody>
         </table>
+    </div>
     </div>
 </div>
 <script>
