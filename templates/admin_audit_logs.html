@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+.audit-clear-btn {
+    background: #dc3545 !important;
+    color: #fff !important;
+    text-decoration: none !important;
+}
+</style>
 <div class="header-row">
     <h2>İşlem Kayıtları (Audit)</h2>
     <a class="button-link" href="{{ url_for('admin_users') }}">Personele Dön</a>
@@ -67,7 +74,7 @@
         </label>
         <div style="display:flex; gap:8px; align-items:flex-end;">
             <button type="submit" class="success-btn">Filtrele</button>
-            <a href="{{ url_for('admin_audit_logs') }}" class="danger-link">Temizle</a>
+            <a href="{{ url_for('admin_audit_logs') }}" class="success-btn audit-clear-btn">Temizle</a>
         </div>
     </form>
 
@@ -82,7 +89,7 @@
                     <th>Gün</th>
                     <th>Daire / Şube</th>
                     <th>Kaynak</th>
-                    <th>Not</th>
+                    <th>Açıklama</th>
                     <th>Önce</th>
                     <th>Sonra</th>
                 </tr>
@@ -91,15 +98,15 @@
                 {% for r in rows %}
                 <tr>
                     <td>{{ r.event_time.strftime('%d.%m.%Y %H:%M:%S') if r.event_time else '-' }}</td>
-                    <td>{{ r.action }}</td>
+                    <td>{{ r.action_tr }}</td>
                     <td>{{ r.actor_label or '-' }}</td>
                     <td>{{ r.target_label or '-' }}</td>
                     <td>{{ r.work_date.strftime('%d.%m.%Y') if r.work_date else '-' }}</td>
-                    <td>{{ (r.daire_baskanligi or '-') ~ ' / ' ~ (r.sube_mudurlugu or '-') }}</td>
-                    <td>{{ r.source or '-' }}</td>
-                    <td>{{ r.note or '-' }}</td>
-                    <td><code>{{ r.old_data_json }}</code></td>
-                    <td><code>{{ r.new_data_json }}</code></td>
+                    <td>{{ r.unit_text }}</td>
+                    <td>{{ r.source_tr }}</td>
+                    <td>{{ r.note_tr }}</td>
+                    <td>{{ r.before_text }}</td>
+                    <td>{{ r.after_text }}</td>
                 </tr>
                 {% else %}
                 <tr><td colspan="10">Kayıt bulunamadı.</td></tr>

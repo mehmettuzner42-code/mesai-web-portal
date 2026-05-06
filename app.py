@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
 from types import SimpleNamespace
+from collections import Counter
 
 from flask import Flask, flash, g, has_request_context, jsonify, redirect, render_template, request, send_file, session, url_for
 from flask_sqlalchemy import SQLAlchemy
@@ -272,7 +273,7 @@ def _user_label_for(uid: int) -> str:
         return f"#{uid}"
     p = UserProfile.query.filter_by(user_id=u.id).first()
     name = (p.ad_soyad if p else "") or ""
-    return f"{name} ({u.email})" if name else str(u.email or f"#{uid}")
+    return str(name).strip() if str(name).strip() else str(u.email or f"#{uid}")
 
 
 def write_overtime_audit_log(
@@ -1729,7 +1730,80 @@ def admin_audit_logs():
         except Exception:
             pass
 
-    rows = q.limit(2000).all()
+    raw_rows = q.limit(2000).all()
+    field_labels = {
+        "start_time": "Başlama",
+        "end_time": "Bitiş",
+        "pct60": "%60 mesai",
+        "pct15": "%15 mesai",
+        "pazar": "Pazar",
+        "bayram": "Bayram",
+        "description": "Açıklama",
+        "work_date": "Tarih",
+    }
+
+    def _fmt_val(v):
+        if isinstance(v, float):
+            if abs(v - round(v)) < 1e-9:
+                return str(int(round(v)))
+            return str(v).replace(".", ",")
+        return str(v or "")
+
+    def _build_diff_text(old_json: str, new_json: str):
+        try:
+            o = json.loads(old_json or "{}") if old_json else {}
+        except Exception:
+            o = {}
+        try:
+            n = json.loads(new_json or "{}") if new_json else {}
+        except Exception:
+            n = {}
+        keys = ["work_date", "start_time", "end_time", "pct60", "pct15", "pazar", "bayram", "description"]
+        changed = [k for k in keys if _fmt_val(o.get(k, "")) != _fmt_val(n.get(k, ""))]
+        if not changed:
+            return "-", "-"
+        before_parts = [f"{field_labels.get(k, k)} {_fmt_val(o.get(k, ''))}".strip() for k in changed]
+        after_parts = [f"{field_labels.get(k, k)} {_fmt_val(n.get(k, ''))}".strip() for k in changed]
+        return "; ".join(before_parts), "; ".join(after_parts)
+
+    def _action_tr(a: str):
+        a0 = str(a or "").lower()
+        if a0 == "create":
+            return "Ekleme"
+        if a0 == "update":
+            return "Güncelleme"
+        if a0 == "delete":
+            return "Silme"
+        return a
+
+    def _source_tr(s: str):
+        m = {
+            "web": "Web",
+            "apk": "APK",
+            "bulk": "Toplu Mesai",
+            "import": "Excel İçe Aktar",
+            "backup": "Yedek İçe Aktar",
+            "admin": "Yönetim",
+        }
+        return m.get(str(s or "").lower(), s or "-")
+
+    rows = []
+    for r in raw_rows:
+        before_text, after_text = _build_diff_text(r.old_data_json, r.new_data_json)
+        rows.append(
+            {
+                "event_time": r.event_time,
+                "action_tr": _action_tr(r.action),
+                "actor_label": r.actor_label,
+                "target_label": r.target_label,
+                "work_date": r.work_date,
+                "unit_text": f"{(r.daire_baskanligi or '-')}" + " / " + f"{(r.sube_mudurlugu or '-')}",
+                "source_tr": _source_tr(r.source),
+                "note_tr": "Açıklama",
+                "before_text": before_text,
+                "after_text": after_text,
+            }
+        )
     users = User.query.order_by(User.email.asc()).all()
     profiles = {p.user_id: p for p in UserProfile.query.filter(UserProfile.user_id.in_([u.id for u in users] or [0])).all()}
     daire_options = sorted({(p.daire_baskanligi or "").strip() for p in profiles.values() if (p.daire_baskanligi or "").strip()})
@@ -1890,17 +1964,6 @@ def admin_users_bulk_entry():
                 OvertimeEntry.work_date >= p_start,
                 OvertimeEntry.work_date <= p_end,
             ).all()
-            for old_row in old_rows:
-                write_overtime_audit_log(
-                    action="delete",
-                    actor_user_id=(login_user.id if login_user else 0),
-                    target_user_id=old_row.user_id,
-                    old_entry=old_row,
-                    new_entry=None,
-                    source="bulk",
-                    note="bulk_replace_period",
-                )
-                db.session.delete(old_row)
             to_insert = []
             # Tum matrisi (kullanici x gun) dolasmak yerine sadece gelen dolu hucreleri isle.
             selected_uid_set = {int(x) for x in selected_user_ids}
@@ -2016,19 +2079,71 @@ def admin_users_bulk_entry():
                         description="",
                     )
                 )
+            # Sadece gercek degisiklikleri audit'e yaz.
+            def _entry_sig(e: OvertimeEntry):
+                return (
+                    e.work_date.isoformat() if e.work_date else "",
+                    str(e.start_time or ""),
+                    str(e.end_time or ""),
+                    round(float(e.pct60 or 0), 4),
+                    round(float(e.pct15 or 0), 4),
+                    round(float(e.pazar or 0), 4),
+                    round(float(e.bayram or 0), 4),
+                    str(e.description or ""),
+                )
+
+            old_by_user = {}
+            for r in old_rows:
+                old_by_user.setdefault(int(r.user_id), []).append(r)
+            new_by_user = {}
+            for r in to_insert:
+                new_by_user.setdefault(int(r.user_id), []).append(r)
+
+            all_uids = set(old_by_user.keys()) | set(new_by_user.keys())
+            for uid in all_uids:
+                olds = old_by_user.get(uid, [])
+                news = new_by_user.get(uid, [])
+                old_counter = Counter(_entry_sig(x) for x in olds)
+                new_counter = Counter(_entry_sig(x) for x in news)
+
+                removed = old_counter - new_counter
+                added = new_counter - old_counter
+
+                old_bucket = {}
+                for x in olds:
+                    old_bucket.setdefault(_entry_sig(x), []).append(x)
+                new_bucket = {}
+                for x in news:
+                    new_bucket.setdefault(_entry_sig(x), []).append(x)
+
+                for sig, cnt in removed.items():
+                    for old_row in (old_bucket.get(sig) or [])[:cnt]:
+                        write_overtime_audit_log(
+                            action="delete",
+                            actor_user_id=(login_user.id if login_user else 0),
+                            target_user_id=uid,
+                            old_entry=old_row,
+                            new_entry=None,
+                            source="bulk",
+                            note="bulk_delete_changed_only",
+                        )
+                for sig, cnt in added.items():
+                    for new_row in (new_bucket.get(sig) or [])[:cnt]:
+                        write_overtime_audit_log(
+                            action="create",
+                            actor_user_id=(login_user.id if login_user else 0),
+                            target_user_id=uid,
+                            old_entry=None,
+                            new_entry=new_row,
+                            source="bulk",
+                            note="bulk_add_changed_only",
+                        )
+
+            # Veriyi donem bazli replace etmeye devam et.
+            for old_row in old_rows:
+                db.session.delete(old_row)
             if to_insert:
                 db.session.add_all(to_insert)
-                db.session.flush()
-                for row in to_insert:
-                    write_overtime_audit_log(
-                        action="create",
-                        actor_user_id=(login_user.id if login_user else 0),
-                        target_user_id=row.user_id,
-                        old_entry=None,
-                        new_entry=row,
-                        source="bulk",
-                        note="bulk_add",
-                    )
             db.session.commit()
             flash("Toplu mesai girişi kaydedildi.", "success")
         except Exception as exc:
