@@ -1694,8 +1694,35 @@ def admin_audit_logs():
         flash("İşlem kayıtlarını görme yetkiniz yok.", "error")
         return redirect(url_for("dashboard"))
 
-    year = request.args.get("year", type=int)
+    # Personel ekranındaki yil/donem secimi ile ayni davranis.
+    period_pairs = db.session.query(AuditLog.period_start_year, AuditLog.period_start_month).filter(
+        AuditLog.period_start_year.isnot(None),
+        AuditLog.period_start_month.isnot(None),
+    ).distinct().all()
+    start_options = sorted(
+        {(int(y), int(m)) for y, m in period_pairs if y and m and 1 <= int(m) <= 12},
+        reverse=True,
+    )
+    if not start_options:
+        ps0 = period_start_for_date(date.today())
+        start_options = [(ps0.year, ps0.month)]
+    years = sorted({period_year(y, m) for (y, m) in start_options}, reverse=True)
+    default_year = years[0]
+    year = request.args.get("year", type=int) or default_year
+    if year not in years:
+        year = default_year
+    period_options = [(y, m) for (y, m) in start_options if period_year(y, m) == year] or [start_options[0]]
     period = (request.args.get("period") or "").strip()
+    active_start = period_options[0]
+    if period and "-" in period:
+        try:
+            sy, sm = (int(x) for x in period.split("-"))
+            if (sy, sm) in period_options:
+                active_start = (sy, sm)
+        except Exception:
+            pass
+    period_value = f"{active_start[0]:04d}-{active_start[1]:02d}"
+
     day = (request.args.get("day") or "").strip()
     actor_user_id = request.args.get("actor_user_id", type=int)
     target_user_id = request.args.get("target_user_id", type=int)
@@ -1720,15 +1747,10 @@ def admin_audit_logs():
             q = q.filter(AuditLog.work_date == d)
         except Exception:
             pass
-    if year:
-        q = q.filter(AuditLog.period_start_year == year)
-    if period:
-        try:
-            p = int(period)
-            if 1 <= p <= 12:
-                q = q.filter(AuditLog.period_start_month == p)
-        except Exception:
-            pass
+    q = q.filter(
+        AuditLog.period_start_year == active_start[0],
+        AuditLog.period_start_month == active_start[1],
+    )
 
     raw_rows = q.limit(2000).all()
     field_labels = {
@@ -1758,7 +1780,7 @@ def admin_audit_logs():
             n = json.loads(new_json or "{}") if new_json else {}
         except Exception:
             n = {}
-        keys = ["work_date", "start_time", "end_time", "pct60", "pct15", "pazar", "bayram", "description"]
+        keys = ["pct60", "pct15"]
         changed = [k for k in keys if _fmt_val(o.get(k, "")) != _fmt_val(n.get(k, ""))]
         if not changed:
             return "-", "-"
@@ -1790,9 +1812,10 @@ def admin_audit_logs():
     rows = []
     for r in raw_rows:
         before_text, after_text = _build_diff_text(r.old_data_json, r.new_data_json)
+        tr_time = (r.event_time + timedelta(hours=3)) if r.event_time else None
         rows.append(
             {
-                "event_time": r.event_time,
+                "event_time": tr_time,
                 "action_tr": _action_tr(r.action),
                 "actor_label": r.actor_label,
                 "target_label": r.target_label,
@@ -1815,7 +1838,7 @@ def admin_audit_logs():
         profiles=profiles,
         selected={
             "year": year or "",
-            "period": period,
+            "period": period_value,
             "day": day,
             "actor_user_id": actor_user_id or "",
             "target_user_id": target_user_id or "",
@@ -1823,6 +1846,8 @@ def admin_audit_logs():
             "daire": daire,
             "sube": sube,
         },
+        years=years,
+        period_options=period_options,
         daire_options=daire_options,
         sube_options=sube_options,
     )

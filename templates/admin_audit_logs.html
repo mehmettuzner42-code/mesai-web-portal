@@ -6,13 +6,34 @@
     color: #fff !important;
     text-decoration: none !important;
 }
+.audit-page-bleed {
+    margin-left: 0;
+    margin-right: 0;
+    width: 100%;
+}
+.audit-action-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 86px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .2px;
+}
+.audit-action-create { background: #16a34a; }
+.audit-action-update { background: #f59e0b; }
+.audit-action-delete { background: #dc2626; }
 </style>
-<div class="header-row">
-    <h2>İşlem Kayıtları (Audit)</h2>
-    <a class="button-link" href="{{ url_for('admin_users') }}">Personele Dön</a>
-</div>
+<div class="audit-page-bleed">
+    <div class="header-row">
+        <h2>İşlem Kayıtları (Audit)</h2>
+        <a class="button-link" href="{{ url_for('admin_users') }}">Personele Dön</a>
+    </div>
 
-<div class="card">
+<div class="card" style="margin-left:0; margin-right:0;">
     <form method="get" class="admin-filter-bar" style="margin-bottom:12px; display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:10px;">
         <label>İşlem Yapan
             <select name="actor_user_id">
@@ -46,13 +67,19 @@
             <input type="date" name="day" value="{{ selected.day }}">
         </label>
         <label>Yıl
-            <input type="number" name="year" min="2020" max="2100" value="{{ selected.year }}">
+            <select name="year" id="auditYearSelect">
+                {% for y in years %}
+                <option value="{{ y }}" {% if selected.year and selected.year|int == y %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
         </label>
-        <label>Dönem Ayı
+        <label>Dönem
             <select name="period">
-                <option value="">Tümü</option>
-                {% for m in range(1,13) %}
-                <option value="{{ m }}" {% if selected.period and selected.period|int == m %}selected{% endif %}>{{ m }}</option>
+                {% for sy, sm in period_options %}
+                {% set em = 1 if sm == 12 else sm + 1 %}
+                <option value="{{ sy }}-{{ '%02d'|format(sm) }}" {% if selected.period == (sy ~ '-' ~ ('%02d'|format(sm))) %}selected{% endif %}>
+                    {{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][sm-1] }}/{{ ["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"][em-1] }}
+                </option>
                 {% endfor %}
             </select>
         </label>
@@ -74,7 +101,7 @@
         </label>
         <div style="display:flex; gap:8px; align-items:flex-end;">
             <button type="submit" class="success-btn">Filtrele</button>
-            <a href="{{ url_for('admin_audit_logs') }}" class="success-btn audit-clear-btn">Temizle</a>
+            <button type="button" class="success-btn audit-clear-btn" onclick="window.location.href='{{ url_for('admin_audit_logs') }}'">Temizle</button>
         </div>
     </form>
 
@@ -98,7 +125,11 @@
                 {% for r in rows %}
                 <tr>
                     <td>{{ r.event_time.strftime('%d.%m.%Y %H:%M:%S') if r.event_time else '-' }}</td>
-                    <td>{{ r.action_tr }}</td>
+                    <td>
+                        <span class="audit-action-badge {% if r.action_tr == 'Ekleme' %}audit-action-create{% elif r.action_tr == 'Güncelleme' %}audit-action-update{% elif r.action_tr == 'Silme' %}audit-action-delete{% endif %}">
+                            {{ r.action_tr }}
+                        </span>
+                    </td>
                     <td>{{ r.actor_label or '-' }}</td>
                     <td>{{ r.target_label or '-' }}</td>
                     <td>{{ r.work_date.strftime('%d.%m.%Y') if r.work_date else '-' }}</td>
@@ -114,5 +145,18 @@
             </tbody>
         </table>
     </div>
+</div>
+<script>
+(() => {
+    const yearSel = document.getElementById("auditYearSelect");
+    if (!yearSel) return;
+    yearSel.addEventListener("change", () => {
+        const url = new URL(window.location.href);
+        url.searchParams.set("year", yearSel.value);
+        url.searchParams.delete("period");
+        window.location.href = url.toString();
+    });
+})();
+</script>
 </div>
 {% endblock %}
