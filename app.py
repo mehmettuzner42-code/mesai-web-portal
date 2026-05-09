@@ -1795,7 +1795,47 @@ def admin_audit_logs():
         "bayram": "Bayram",
         "description": "Açıklama",
         "work_date": "Tarih",
+        "daire_baskanligi": "Daire Başkanlığı",
+        "sube_mudurlugu": "Şube Müdürlüğü",
+        "ad_soyad": "Ad Soyad",
+        "sicil_no": "Sicil No",
+        "ekip_kodu": "Ekip Kodu",
+        "email": "E-posta",
     }
+
+    field_aliases = {
+        "start_time": {"start_time", "startTime"},
+        "end_time": {"end_time", "endTime"},
+        "pct60": {"pct60"},
+        "pct15": {"pct15"},
+        "pazar": {"pazar"},
+        "bayram": {"bayram"},
+        "description": {"description"},
+        "work_date": {"work_date", "workDate"},
+        "daire_baskanligi": {"daire_baskanligi", "daireBaskanligi"},
+        "sube_mudurlugu": {"sube_mudurlugu", "subeMudurlugu"},
+        "ad_soyad": {"ad_soyad", "adSoyad"},
+        "sicil_no": {"sicil_no", "sicilNo"},
+        "ekip_kodu": {"ekip_kodu", "ekipKodu"},
+        "email": {"email"},
+    }
+
+    field_order = [
+        "work_date",
+        "start_time",
+        "end_time",
+        "pct60",
+        "pct15",
+        "pazar",
+        "bayram",
+        "description",
+        "daire_baskanligi",
+        "sube_mudurlugu",
+        "ad_soyad",
+        "sicil_no",
+        "ekip_kodu",
+        "email",
+    ]
 
     def _fmt_val(v):
         if isinstance(v, float):
@@ -1813,12 +1853,48 @@ def admin_audit_logs():
             n = json.loads(new_json or "{}") if new_json else {}
         except Exception:
             n = {}
-        keys = ["pct60", "pct15"]
-        changed = [k for k in keys if _fmt_val(o.get(k, "")) != _fmt_val(n.get(k, ""))]
+
+        def _val_from(payload: dict, canonical_key: str):
+            for alias in field_aliases.get(canonical_key, {canonical_key}):
+                if alias in payload:
+                    return payload.get(alias)
+            return ""
+
+        changed = []
+        for k in field_order:
+            ov = _fmt_val(_val_from(o, k))
+            nv = _fmt_val(_val_from(n, k))
+            if ov != nv:
+                changed.append(k)
+
+        # Beklenmedik/ek alanlar da degisti ise kacirmayalim.
+        known_aliases = {a for s in field_aliases.values() for a in s}
+        extra_keys = set(o.keys()) | set(n.keys())
+        for raw_k in sorted(extra_keys):
+            if raw_k in known_aliases:
+                continue
+            ov = _fmt_val(o.get(raw_k, ""))
+            nv = _fmt_val(n.get(raw_k, ""))
+            if ov != nv:
+                changed.append(raw_k)
+
         if not changed:
             return "-", "-"
-        before_parts = [f"{field_labels.get(k, k)} {_fmt_val(o.get(k, ''))}".strip() for k in changed]
-        after_parts = [f"{field_labels.get(k, k)} {_fmt_val(n.get(k, ''))}".strip() for k in changed]
+
+        before_parts = []
+        after_parts = []
+        for k in changed:
+            ov = _fmt_val(_val_from(o, k) if k in field_aliases else o.get(k, ""))
+            nv = _fmt_val(_val_from(n, k) if k in field_aliases else n.get(k, ""))
+            if ov:
+                before_parts.append(f"{field_labels.get(k, k)} {ov}".strip())
+            if nv:
+                after_parts.append(f"{field_labels.get(k, k)} {nv}".strip())
+
+        if not before_parts:
+            before_parts = ["-"]
+        if not after_parts:
+            after_parts = ["-"]
         return "; ".join(before_parts), "; ".join(after_parts)
 
     def _action_tr(a: str):
