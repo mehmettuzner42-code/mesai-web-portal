@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 from functools import wraps
 from types import SimpleNamespace
-from collections import Counter
+from collections import Counter, defaultdict
 
 from flask import Flask, flash, g, has_request_context, jsonify, redirect, render_template, request, send_file, session, url_for
 from markupsafe import escape
@@ -358,6 +358,42 @@ def hhmm_to_minutes(hhmm: str):
         return h * 60 + m
     except Exception:
         return None
+
+
+MESAI_TIME_OVERLAP_MESSAGE = "Aynı gün için yazılmış mesai kaydınız bulunmaktadır."
+
+
+def mesai_time_ranges_overlap(start_a: str, end_a: str, start_b: str, end_b: str) -> bool:
+    """Aynı takvim günü için iki [başlama, bitiş] aralığı çakışıyor mu (bitişik uçlar hariç)."""
+    s1 = hhmm_to_minutes((start_a or "").strip())
+    e1 = hhmm_to_minutes((end_a or "").strip())
+    s2 = hhmm_to_minutes((start_b or "").strip())
+    e2 = hhmm_to_minutes((end_b or "").strip())
+    if s1 is None or e1 is None or s2 is None or e2 is None:
+        return False
+    a0, a1 = s1, e1
+    if a1 <= a0:
+        a1 += 1440
+    b0, b1 = s2, e2
+    if b1 <= b0:
+        b1 += 1440
+    return max(a0, b0) < min(a1, b1)
+
+
+def find_overlapping_overtime_for_user(
+    user_id: int,
+    work_date,
+    start_time: str,
+    end_time: str,
+    exclude_entry_id=None,
+):
+    q = OvertimeEntry.query.filter_by(user_id=int(user_id), work_date=work_date)
+    if exclude_entry_id is not None:
+        q = q.filter(OvertimeEntry.id != int(exclude_entry_id))
+    for row in q.all():
+        if mesai_time_ranges_overlap(start_time, end_time, row.start_time or "", row.end_time or ""):
+            return row
+    return None
 
 
 def calc_total_hours(start_hhmm: str, end_hhmm: str):
@@ -1444,27 +1480,28 @@ def grouped_period_rows(entries):
 
 
 def build_recent_ui_items(entries):
-    def sort_key(e: OvertimeEntry):
+    """Dönemler en yeniden eskiye; her dönem içinde kayıtlar en yeni tarihten eskiye."""
+    by_period = defaultdict(list)
+    for e in entries:
         ps = period_start_for_date(e.work_date)
-        period_value = ps.year * 100 + ps.month
-        return (period_value, e.work_date, e.start_time, e.id)
-
-    sorted_entries = sorted(entries, key=sort_key, reverse=True)
+        by_period[(ps.year, ps.month)].append(e)
+    period_keys = sorted(by_period.keys(), reverse=True)
     out = []
-    prev_period = None
-    for e in sorted_entries:
-        ps = period_start_for_date(e.work_date)
-        key = (ps.year, ps.month)
-        if key != prev_period:
-            p_start, p_end = period_for_start(ps.year, ps.month)
-            out.append(
-                {
-                    "kind": "header",
-                    "label": f"{format_dmy(p_start)} - {format_dmy(p_end)}",
-                }
-            )
-            prev_period = key
-        out.append({"kind": "entry", "entry": e})
+    for y, m in period_keys:
+        p_start, p_end = period_for_start(y, m)
+        out.append(
+            {
+                "kind": "header",
+                "label": f"{format_dmy(p_start)} - {format_dmy(p_end)}",
+            }
+        )
+        period_entries = sorted(
+            by_period[(y, m)],
+            key=lambda e: (e.work_date, e.start_time or "", e.id),
+            reverse=True,
+        )
+        for e in period_entries:
+            out.append({"kind": "entry", "entry": e})
     return out
 
 
@@ -2415,7 +2452,7 @@ def admin_users_bulk_entry():
             .order_by(OvertimeEntry.user_id.asc(), OvertimeEntry.work_date.asc(), OvertimeEntry.id.asc())
             .all()
         )
-        first_by_day = {}
+        sums_by_day = {}
 
         def _fmt_cell_num(v: float) -> str:
             n = float(v or 0)
@@ -2427,15 +2464,13 @@ def admin_users_bulk_entry():
 
         for uid, work_date, pct60_val, pazar_val, bayram_val in existing:
             k = (int(uid), work_date.isoformat())
-            if k in first_by_day:
-                continue
-            first_by_day[k] = {
-                "pct60": float(pct60_val or 0),
-                "pazar": float(pazar_val or 0),
-                "bayram": float(bayram_val or 0),
-            }
+            if k not in sums_by_day:
+                sums_by_day[k] = {"pct60": 0.0, "pazar": 0.0, "bayram": 0.0}
+            sums_by_day[k]["pct60"] += float(pct60_val or 0)
+            sums_by_day[k]["pazar"] += float(pazar_val or 0)
+            sums_by_day[k]["bayram"] += float(bayram_val or 0)
         # Sadece mevcut kaydi olan hucreleri doldur; uid x gun carpimiyla bos hucreleri dolasma.
-        for (uid, day_iso), rec in first_by_day.items():
+        for (uid, day_iso), rec in sums_by_day.items():
             if uid not in selected_user_ids:
                 continue
             k = f"cell_{uid}_{day_iso}"
@@ -4758,6 +4793,11 @@ def dashboard():
             if dup:
                 flash("Aynı gün ve saat için mükerrer mesai girilemez.", "error")
                 return redirect(url_for("dashboard"))
+            if find_overlapping_overtime_for_user(
+                user.id, entry.work_date, entry.start_time, entry.end_time
+            ):
+                flash(MESAI_TIME_OVERLAP_MESSAGE, "overlap")
+                return redirect(url_for("dashboard"))
             if is_period_locked(entry.work_date) and not can_bypass_period_lock(login_user):
                 flash("Bu dönem kilitli. Mesai girişi yapılamaz.", "error")
                 return redirect(url_for("dashboard"))
@@ -4813,15 +4853,24 @@ def edit_entry(entry_id: int):
                 description=entry.description,
             )
             new_work_date = parse_date(request.form.get("work_date", ""))
+            new_start = request.form.get("start_time", "").strip()
+            new_end = request.form.get("end_time", "").strip()
             if (
                 (is_period_locked(entry.work_date) or is_period_locked(new_work_date))
                 and not can_bypass_period_lock(login_user)
             ):
                 flash("Bu dönem kilitli. Güncelleme yapılamaz.", "error")
                 return redirect(url_for("dashboard"))
+            if find_overlapping_overtime_for_user(
+                user.id, new_work_date, new_start, new_end, exclude_entry_id=entry.id
+            ):
+                flash(MESAI_TIME_OVERLAP_MESSAGE, "overlap")
+                return redirect(
+                    url_for("edit_entry", entry_id=entry_id, back=request.form.get("back", "dashboard"))
+                )
             entry.work_date = new_work_date
-            entry.start_time = request.form.get("start_time", "").strip()
-            entry.end_time = request.form.get("end_time", "").strip()
+            entry.start_time = new_start
+            entry.end_time = new_end
             entry.pct60 = parse_float(request.form.get("pct60", "0"))
             entry.pct15 = parse_float(request.form.get("pct15", "0"))
             entry.pazar = parse_float(request.form.get("pazar", "0"))
@@ -4930,7 +4979,7 @@ def reports():
             OvertimeEntry.work_date >= p_start,
             OvertimeEntry.work_date <= p_end,
         )
-        .order_by(OvertimeEntry.work_date.asc(), OvertimeEntry.start_time.asc(), OvertimeEntry.id.asc())
+        .order_by(OvertimeEntry.work_date.desc(), OvertimeEntry.start_time.desc(), OvertimeEntry.id.desc())
         .all()
     )
     period_total = {
@@ -5405,6 +5454,9 @@ def api_create_entry():
         if existing:
             return jsonify(entry_to_dict(existing)), 200
 
+        if find_overlapping_overtime_for_user(user.id, work_date, start_time, end_time):
+            return jsonify({"error": "time_overlap", "message": MESAI_TIME_OVERLAP_MESSAGE}), 409
+
         entry = OvertimeEntry(
             user_id=user.id,
             work_date=work_date,
@@ -5457,9 +5509,15 @@ def api_update_entry(entry_id: int):
         new_work_date = parse_date(str(data.get("workDate", entry.work_date.isoformat())))
         if (is_period_locked(entry.work_date) or is_period_locked(new_work_date)) and not can_bypass_period_lock(user):
             return jsonify({"error": "period_locked"}), 423
+        new_start = str(data.get("startTime", entry.start_time))
+        new_end = str(data.get("endTime", entry.end_time))
+        if find_overlapping_overtime_for_user(
+            user.id, new_work_date, new_start, new_end, exclude_entry_id=entry.id
+        ):
+            return jsonify({"error": "time_overlap", "message": MESAI_TIME_OVERLAP_MESSAGE}), 409
         entry.work_date = new_work_date
-        entry.start_time = str(data.get("startTime", entry.start_time))
-        entry.end_time = str(data.get("endTime", entry.end_time))
+        entry.start_time = new_start
+        entry.end_time = new_end
         entry.pct60 = float(data.get("pct60", entry.pct60))
         entry.pct15 = float(data.get("pct15", entry.pct15))
         entry.pazar = float(data.get("pazar", entry.pazar))
