@@ -1836,6 +1836,7 @@ def admin_audit_logs():
         "ekip_kodu",
         "email",
     ]
+    numeric_diff_fields = {"pct60", "pct15", "pazar", "bayram"}
 
     def _fmt_val(v):
         if isinstance(v, float):
@@ -1860,18 +1861,32 @@ def admin_audit_logs():
                     return payload.get(alias)
             return ""
 
+        def _norm_for_compare(canonical_key: str, value):
+            if canonical_key in numeric_diff_fields:
+                s = str(value or "").strip().replace(",", ".")
+                if not s:
+                    return 0.0
+                try:
+                    return float(s)
+                except Exception:
+                    return 0.0
+            return _fmt_val(value)
+
         changed = []
         for k in field_order:
-            ov = _fmt_val(_val_from(o, k))
-            nv = _fmt_val(_val_from(n, k))
-            if ov != nv:
+            ov_cmp = _norm_for_compare(k, _val_from(o, k))
+            nv_cmp = _norm_for_compare(k, _val_from(n, k))
+            if k in numeric_diff_fields:
+                if abs(float(ov_cmp) - float(nv_cmp)) > 1e-9:
+                    changed.append(k)
+            elif ov_cmp != nv_cmp:
                 changed.append(k)
 
         # Beklenmedik/ek alanlar da degisti ise kacirmayalim.
         known_aliases = {a for s in field_aliases.values() for a in s}
         extra_keys = set(o.keys()) | set(n.keys())
         for raw_k in sorted(extra_keys):
-            if raw_k in known_aliases or str(raw_k).lower() == "id":
+            if raw_k in known_aliases or str(raw_k).lower() in {"id", "user_id", "userid"}:
                 continue
             ov = _fmt_val(o.get(raw_k, ""))
             nv = _fmt_val(n.get(raw_k, ""))
