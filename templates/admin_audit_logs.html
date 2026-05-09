@@ -40,6 +40,10 @@ main.container {
     white-space: normal;
     word-break: break-word;
 }
+.audit-diff-value {
+    color: #dc2626;
+    font-weight: 800;
+}
 .audit-content-section {
     padding-left: 10px;
     padding-right: 10px;
@@ -172,8 +176,8 @@ main.container {
                     <td>{{ r.unit_text }}</td>
                     <td>{{ r.source_tr }}</td>
                     <td>{{ r.work_date.strftime('%d.%m.%Y') if r.work_date else '-' }}</td>
-                    <td>{{ r.before_text }}</td>
-                    <td>{{ r.after_text }}</td>
+                    <td>{{ r.before_text|safe }}</td>
+                    <td>{{ r.after_text|safe }}</td>
                 </tr>
                 {% else %}
                 <tr><td colspan="9">Kayıt bulunamadı.</td></tr>

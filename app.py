@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from collections import Counter
 
 from flask import Flask, flash, g, has_request_context, jsonify, redirect, render_template, request, send_file, session, url_for
+from markupsafe import escape
 from flask_sqlalchemy import SQLAlchemy
 from openpyxl.cell.cell import MergedCell
 from openpyxl import Workbook, load_workbook
@@ -1821,7 +1822,6 @@ def admin_audit_logs():
     }
 
     field_order = [
-        "work_date",
         "start_time",
         "end_time",
         "pct60",
@@ -1871,7 +1871,7 @@ def admin_audit_logs():
         known_aliases = {a for s in field_aliases.values() for a in s}
         extra_keys = set(o.keys()) | set(n.keys())
         for raw_k in sorted(extra_keys):
-            if raw_k in known_aliases:
+            if raw_k in known_aliases or str(raw_k).lower() == "id":
                 continue
             ov = _fmt_val(o.get(raw_k, ""))
             nv = _fmt_val(n.get(raw_k, ""))
@@ -1887,9 +1887,13 @@ def admin_audit_logs():
             ov = _fmt_val(_val_from(o, k) if k in field_aliases else o.get(k, ""))
             nv = _fmt_val(_val_from(n, k) if k in field_aliases else n.get(k, ""))
             if ov:
-                before_parts.append(f"{field_labels.get(k, k)} {ov}".strip())
+                label = escape(field_labels.get(k, k))
+                val = escape(ov)
+                before_parts.append(f'{label} <span class="audit-diff-value">{val}</span>')
             if nv:
-                after_parts.append(f"{field_labels.get(k, k)} {nv}".strip())
+                label = escape(field_labels.get(k, k))
+                val = escape(nv)
+                after_parts.append(f'{label} <span class="audit-diff-value">{val}</span>')
 
         if not before_parts:
             before_parts = ["-"]
