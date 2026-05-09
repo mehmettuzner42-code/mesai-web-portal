@@ -1661,8 +1661,14 @@ def admin_users():
             continue
         visible_users.append(u)
     rows = []
+    founder_email_norm = FOUNDER_EMAIL.strip().lower()
+    viewer_is_founder = bool(is_founder_user(effective_user))
     for u in visible_users:
         p = profiles.get(u.id) or UserProfile(user_id=u.id)
+        target_is_founder_account = (str(u.email or "").strip().lower() == founder_email_norm)
+        can_open_as_user = bool(can_impersonate and (allowed_ids is None or u.id in allowed_ids))
+        if target_is_founder_account and not viewer_is_founder:
+            can_open_as_user = False
         rows.append(
             {
                 "user": u,
@@ -1670,7 +1676,7 @@ def admin_users():
                 "entry_count": int(entry_counts.get(u.id, 0)),
                 "can_manage_permissions": bool(is_founder_user(effective_user)),
                 "can_reset_password": bool(can_reset_password),
-                "can_open_user": bool(can_impersonate and (allowed_ids is None or u.id in allowed_ids)),
+                "can_open_user": can_open_as_user,
                 "can_change_email": bool(can_change_email),
                 "can_terminated_users": bool(can_terminated_users),
                 "can_unit_change": bool(can_unit_change),
