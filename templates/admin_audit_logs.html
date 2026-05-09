@@ -40,6 +40,9 @@ main.container {
     white-space: normal;
     word-break: break-word;
 }
+.audit-table tr.selected-row td {
+    background: #dbeafe !important;
+}
 .audit-diff-value {
     color: #dc2626;
     font-weight: 800;
@@ -65,7 +68,7 @@ main.container {
 
 <div class="card" style="margin-left:0; margin-right:0;">
     <div class="audit-content-section">
-    <form method="get" class="admin-filter-bar" style="margin-bottom:12px; display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:10px;">
+    <form id="auditFilterForm" method="get" class="admin-filter-bar" style="margin-bottom:12px; display:grid; grid-template-columns:repeat(4,minmax(180px,1fr)); gap:10px;">
         <label>İşlem Yapan
             <select name="actor_user_id">
                 <option value="">Tümü</option>
@@ -135,7 +138,7 @@ main.container {
         <div style="display:flex; gap:8px; align-items:flex-end;">
             <button type="submit" class="success-btn">Filtrele</button>
             <button type="button" class="success-btn audit-clear-btn" onclick="window.location.href='{{ url_for('admin_audit_logs') }}'">Temizle</button>
-            {% if can_audit_clear %}
+            {% if can_audit_clear and is_real_founder %}
             <button
                 type="submit"
                 class="success-btn audit-clear-btn"
@@ -151,6 +154,7 @@ main.container {
         <table class="compact-table audit-table">
             <thead>
                 <tr>
+                    <th><input type="checkbox" id="auditSelectAll" title="Tümünü Seç"></th>
                     <th>Zaman</th>
                     <th>İşlem</th>
                     <th>Yapan</th>
@@ -164,7 +168,8 @@ main.container {
             </thead>
             <tbody>
                 {% for r in rows %}
-                <tr>
+                <tr class="selectable-row">
+                    <td><input class="row-select" type="checkbox" name="selected_audit_ids" value="{{ r.id }}" form="auditFilterForm"></td>
                     <td>{{ r.event_time.strftime('%d.%m.%Y %H:%M:%S') if r.event_time else '-' }}</td>
                     <td>
                         <span class="audit-action-badge {% if r.action_tr == 'Ekleme' %}audit-action-create{% elif r.action_tr == 'Güncelleme' %}audit-action-update{% elif r.action_tr == 'Silme' %}audit-action-delete{% endif %}">
@@ -180,7 +185,7 @@ main.container {
                     <td>{{ r.after_text|safe }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="9">Kayıt bulunamadı.</td></tr>
+                <tr><td colspan="10">Kayıt bulunamadı.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -197,6 +202,42 @@ main.container {
         url.searchParams.delete("period");
         window.location.href = url.toString();
     });
+
+    const selectAll = document.getElementById("auditSelectAll");
+    const rowChecks = Array.from(document.querySelectorAll(".audit-table input.row-select"));
+    function updateRowHighlight(cb) {
+        const tr = cb.closest("tr");
+        if (!tr) return;
+        tr.classList.toggle("selected-row", cb.checked);
+    }
+    function syncSelectAll() {
+        if (!selectAll) return;
+        if (!rowChecks.length) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+            return;
+        }
+        const checked = rowChecks.filter((cb) => cb.checked).length;
+        selectAll.checked = checked === rowChecks.length;
+        selectAll.indeterminate = checked > 0 && checked < rowChecks.length;
+    }
+    if (selectAll) {
+        selectAll.addEventListener("change", () => {
+            rowChecks.forEach((cb) => {
+                cb.checked = selectAll.checked;
+                updateRowHighlight(cb);
+            });
+            syncSelectAll();
+        });
+    }
+    rowChecks.forEach((cb) => {
+        cb.addEventListener("change", () => {
+            updateRowHighlight(cb);
+            syncSelectAll();
+        });
+        updateRowHighlight(cb);
+    });
+    syncSelectAll();
 })();
 </script>
 </div>

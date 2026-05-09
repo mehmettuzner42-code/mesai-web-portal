@@ -1726,6 +1726,7 @@ def admin_users():
 @admin_or_delegate_required
 def admin_audit_logs():
     login_user = session_login_user()
+    effective_user = current_user() if login_user else None
 
     # Personel ekranındaki yil/donem secimi ile ayni davranis.
     period_pairs = db.session.query(AuditLog.period_start_year, AuditLog.period_start_month).filter(
@@ -1949,6 +1950,7 @@ def admin_audit_logs():
         tr_time = (r.event_time + timedelta(hours=3)) if r.event_time else None
         rows.append(
             {
+                "id": int(r.id or 0),
                 "event_time": tr_time,
                 "action_tr": _action_tr(r.action),
                 "actor_label": r.actor_label,
@@ -1984,7 +1986,7 @@ def admin_audit_logs():
         period_options=period_options,
         daire_options=daire_options,
         sube_options=sube_options,
-        can_audit_clear=bool(is_founder_user(login_user)),
+        can_audit_clear=bool(is_founder_user(effective_user)),
     )
 
 
@@ -1992,6 +1994,16 @@ def admin_audit_logs():
 @login_required
 @admin_required
 def admin_audit_logs_clear():
+    effective_user = current_user()
+    if not is_founder_user(effective_user):
+        flash("Audit temizleme yalnızca kurucu hesabında kullanılabilir.", "error")
+        return redirect(url_for("admin_audit_logs"))
+    selected_ids = [int(v) for v in request.form.getlist("selected_audit_ids") if str(v).isdigit()]
+    if selected_ids:
+        deleted = AuditLog.query.filter(AuditLog.id.in_(selected_ids)).delete(synchronize_session=False)
+        db.session.commit()
+        flash(f"İşaretli audit kayıtlarından {deleted} satır silindi.", "success")
+        return redirect(url_for("admin_audit_logs"))
     actor_user_id = request.form.get("actor_user_id", type=int)
     target_user_id = request.form.get("target_user_id", type=int)
     action = (request.form.get("action") or "").strip().lower()
