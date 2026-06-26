@@ -4444,6 +4444,10 @@ def admin_import_period_excel():
             defaults = day_defaults(work_d)
             start = str(defaults.get("start") or "08:00")
             end = str(defaults.get("end") or "17:00")
+            pct60 = 0.0
+            pct15 = 0.0
+            pazar = 0.0
+            bayram = 0.0
 
             if kind == "P":
                 entered_hours = max(0.0, float(value or 0.0))
@@ -4451,6 +4455,12 @@ def admin_import_period_excel():
                     end = add_hours(start, entered_hours)
                 else:
                     end = str(defaults.get("end") or end)
+                hk_imp = holiday_kind_tr(work_d)
+                sp_imp = compute_mesai_split(start, end, work_d.weekday(), hk_imp)
+                pct60 = float(sp_imp.get("pct60", 0) or 0)
+                pct15 = float(sp_imp.get("pct15", 0) or 0)
+                pazar = float(sp_imp.get("pazar", 0) or 0)
+                bayram = float(sp_imp.get("bayram", 0) or 0)
             elif kind == "B":
                 is_half_holiday = work_d in half_holiday_set(work_d.year)
                 if is_half_holiday:
@@ -4464,16 +4474,28 @@ def admin_import_period_excel():
                         end = add_hours(start, entered_hours)
                 else:
                     end = str(defaults.get("end") or end)
+                hk_imp = holiday_kind_tr(work_d)
+                sp_imp = compute_mesai_split(start, end, work_d.weekday(), hk_imp)
+                pct60 = float(sp_imp.get("pct60", 0) or 0)
+                pct15 = float(sp_imp.get("pct15", 0) or 0)
+                pazar = float(sp_imp.get("pazar", 0) or 0)
+                bayram = float(sp_imp.get("bayram", 0) or 0)
             else:
+                # Excel hucredeki sayi ogle dusulmus net %60 saatidir (toplu mesai girisi ile ayni).
                 num = max(0.0, float(value or 0.0))
-                end = add_hours(start, num)
-
-            hk_imp = holiday_kind_tr(work_d)
-            sp_imp = compute_mesai_split(start, end, work_d.weekday(), hk_imp)
-            pct60 = float(sp_imp.get("pct60", 0) or 0)
-            pct15 = float(sp_imp.get("pct15", 0) or 0)
-            pazar = float(sp_imp.get("pazar", 0) or 0)
-            bayram = float(sp_imp.get("bayram", 0) or 0)
+                if num <= 0:
+                    continue
+                wd = work_d.weekday()
+                is_sat_no_holiday = wd == 5 and not bool(defaults.get("isHoliday"))
+                if is_sat_no_holiday:
+                    end = end_hhmm_for_saturday_net(start, num)
+                else:
+                    end = add_hours_hhmm(start, num)
+                calc = day_defaults(work_d, end, start)
+                pct60 = float(calc.get("pct60", 0) or 0)
+                pct15 = float(calc.get("pct15", 0) or 0)
+                pazar = float(calc.get("pazar", 0) or 0)
+                bayram = float(calc.get("bayram", 0) or 0)
 
             dup_key = (u.id, work_d.isoformat(), start, end)
             if dup_key in seen_keys:
